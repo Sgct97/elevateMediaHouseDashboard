@@ -73,9 +73,22 @@ export function Dashboard({ brand }: DashboardProps) {
       if (selectedInvoice && campaign['Invoice #'] !== selectedInvoice) {
         return false;
       }
+      // Date range filter
+      if (dateRange.start || dateRange.end) {
+        const launchStr = campaign['Launch Date'] || campaign['Create Date'];
+        if (!launchStr) return false;
+        const launchDate = new Date(launchStr as string);
+        if (isNaN(launchDate.getTime())) return false;
+        if (dateRange.start && launchDate < new Date(dateRange.start)) return false;
+        if (dateRange.end) {
+          const endDate = new Date(dateRange.end);
+          endDate.setHours(23, 59, 59, 999);
+          if (launchDate > endDate) return false;
+        }
+      }
       return true;
     });
-  }, [data?.campaigns, selectedDealership, selectedInvoice]);
+  }, [data?.campaigns, selectedDealership, selectedInvoice, dateRange]);
 
   // Calculate aggregates
   const aggregates = useMemo(() => {
@@ -105,38 +118,19 @@ export function Dashboard({ brand }: DashboardProps) {
     return Array.from(unique).sort();
   }, [data?.campaigns]);
 
-  // Build a lookup of campaign dates by ID
-  const campaignDateMap = useMemo(() => {
-    if (!data?.campaigns) return new Map<string, string>();
-    const map = new Map<string, string>();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    for (const c of data.campaigns as any[]) {
-      const id = String(c['Campaign ID'] || '');
-      map.set(id, c['Launch Date'] || c['Create Date'] || '');
-    }
-    return map;
-  }, [data?.campaigns]);
 
-  // URL data - extract from campaigns directly (each campaign has URL Breakdown embedded)
+  // URL data - extract from FILTERED campaigns so filters apply to Link Clicks too
   const urlData = useMemo(() => {
-    if (!data?.campaigns) return [];
+    if (!filteredCampaigns.length) return [];
     
-    // First try the separate urlBreakdowns array
-    if (data.urlBreakdowns && data.urlBreakdowns.length > 0) {
-      return data.urlBreakdowns.flatMap(({ campaignId, urls }) =>
-        urls.map(url => ({ ...url, campaignId, Date: campaignDateMap.get(campaignId) || '' }))
-      );
-    }
-    
-    // Fallback: extract URL Breakdown from each campaign's stats object
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (data.campaigns as any[]).flatMap((campaign) => {
+    return (filteredCampaigns as any[]).flatMap((campaign) => {
       const urls = (campaign['URL Breakdown'] as Array<Record<string, unknown>>) || [];
       const campaignId = String(campaign['Campaign ID'] || '');
       const date = campaign['Launch Date'] || campaign['Create Date'] || '';
       return urls.map(url => ({ ...url, campaignId, Date: date }));
     });
-  }, [data?.campaigns, data?.urlBreakdowns, campaignDateMap]);
+  }, [filteredCampaigns]);
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#FAFBFC' }}>
