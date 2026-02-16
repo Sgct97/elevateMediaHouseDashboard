@@ -6,6 +6,7 @@ const API_BASE_URL = 'http://www.worthautotrack.com/api/v1';
 const campaignCache = new Map<string, unknown>();
 const urlBreakdownCache = new Map<string, { campaignId: string; urls: unknown[] }>();
 let cacheReady = false;
+let fetchInProgress = false; // Prevent concurrent fetches from overlapping
 
 function getAuthHeader(): string | null {
   const username = process.env.WORTHAUTOTRACK_USERNAME;
@@ -20,7 +21,10 @@ function getAuthHeader(): string | null {
 async function fetchWithRetry(url: string, options: RequestInit, retries = 3): Promise<Response> {
   for (let i = 0; i < retries; i++) {
     try {
-      const response = await fetch(url, options);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout per request
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(timeout);
       return response;
     } catch (error) {
       if (i === retries - 1) throw error;
@@ -77,75 +81,94 @@ async function fetchCampaignBatch(ids: string[], authHeader: string) {
   }
 }
 
-function buildResponse() {
+function buildResponse(extras: Record<string, unknown> = {}) {
   return {
     campaigns: Array.from(campaignCache.values()),
     urlBreakdowns: Array.from(urlBreakdownCache.values()),
     totalCampaigns: campaignCache.size,
     fetchedCampaigns: campaignCache.size,
     fetchedAt: new Date().toISOString(),
+    ...extras,
   };
 }
 
 export async function GET(request: Request) {
-  const authHeader = getAuthHeader();
-
-  if (!authHeader) {
-    return NextResponse.json(
-      {
-        error: 'API credentials not configured',
-        message: 'Set WORTHAUTOTRACK_USERNAME and WORTHAUTOTRACK_PASSWORD in your environment variables.',
-        campaigns: [],
-        urlBreakdowns: [],
-      },
-      { status: 503 }
-    );
-  }
-
-  const url = new URL(request.url);
-  const forceRefresh = url.searchParams.get('refresh') === 'true';
-
-  // If cache exists and not a forced refresh, return it immediately
-  if (!forceRefresh && cacheReady && campaignCache.size > 0) {
-    return NextResponse.json({ ...buildResponse(), fromCache: true });
-  }
-
   try {
-    // Get the full list of campaign IDs from the API
-    const allCampaignsResponse = await fetchWithRetry(`${API_BASE_URL}/campaigns/all/`, {
-      headers: { 'Authorization': authHeader },
-    });
+    const authHeader = getAuthHeader();
 
-    if (!allCampaignsResponse.ok) {
-      if (allCampaignsResponse.status === 401) {
-        return NextResponse.json(
-          { error: 'Authentication failed. Check your API credentials.' },
-          { status: 401 }
-        );
+    if (!authHeader) {
+      return NextResponse.json(
+        {
+          error: 'API credentials not configured',
+          message: 'Set WORTHAUTOTRACK_USERNAME and WORTHAUTOTRACK_PASSWORD in your environment variables.',
+          campaigns: [],
+          urlBreakdowns: [],
+        },
+        { status: 503 }
+      );
+    }
+
+    const url = new URL(request.url);
+    const forceRefresh = url.searchParams.get('refresh') === 'true';
+
+    // If cache exists and not a forced refresh, return it immediately
+    if (!forceRefresh && cacheReady && campaignCache.size > 0) {
+      return NextResponse.json(buildResponse({ fromCache: true }));
+    }
+
+    // If another fetch is already running, return cached data (or loading state)
+    if (fetchInProgress) {
+      if (campaignCache.size > 0) {
+        return NextResponse.json(buildResponse({ fromCache: true, refreshing: true }));
       }
-      throw new Error(`API returned ${allCampaignsResponse.status}`);
+      return NextResponse.json(
+        { error: 'Initial data load in progress. Please wait and refresh.', campaigns: [], urlBreakdowns: [] },
+        { status: 202 }
+      );
     }
 
-    const allCampaignsData = await allCampaignsResponse.json();
-    const allIds: string[] = allCampaignsData.Data.map(
-      (c: { 'Campaign ID': number }) => String(c['Campaign ID'])
-    );
+    fetchInProgress = true;
 
-    // Figure out which IDs we DON'T already have cached
-    const missingIds = allIds.filter(id => !campaignCache.has(id));
+    try {
+      // Get the full list of campaign IDs from the API
+      const allCampaignsResponse = await fetchWithRetry(`${API_BASE_URL}/campaigns/all/`, {
+        headers: { 'Authorization': authHeader },
+      });
 
-    // Only fetch what's missing
-    if (missingIds.length > 0) {
-      await fetchCampaignBatch(missingIds, authHeader);
+      if (!allCampaignsResponse.ok) {
+        if (allCampaignsResponse.status === 401) {
+          return NextResponse.json(
+            { error: 'Authentication failed. Check your API credentials.' },
+            { status: 401 }
+          );
+        }
+        throw new Error(`API returned ${allCampaignsResponse.status}`);
+      }
+
+      const allCampaignsData = await allCampaignsResponse.json();
+      const allIds: string[] = allCampaignsData.Data.map(
+        (c: { 'Campaign ID': number }) => String(c['Campaign ID'])
+      );
+
+      // Figure out which IDs we DON'T already have cached
+      const missingIds = allIds.filter(id => !campaignCache.has(id));
+
+      // Only fetch what's missing
+      if (missingIds.length > 0) {
+        await fetchCampaignBatch(missingIds, authHeader);
+      }
+
+      cacheReady = true;
+      return NextResponse.json(buildResponse());
+
+    } finally {
+      fetchInProgress = false;
     }
-
-    cacheReady = true;
-    return NextResponse.json(buildResponse());
 
   } catch (error) {
-    // If fetch fails but we have cached data, return it
+    // If fetch fails but we have cached data, return it (stale is better than nothing)
     if (campaignCache.size > 0) {
-      return NextResponse.json({ ...buildResponse(), fromCache: true, stale: true });
+      return NextResponse.json(buildResponse({ fromCache: true, stale: true }));
     }
 
     console.error('Error fetching campaigns:', error);
@@ -153,6 +176,8 @@ export async function GET(request: Request) {
       {
         error: 'Failed to fetch data from WorthAutoTrack API',
         message: error instanceof Error ? error.message : 'Unknown error',
+        campaigns: [],
+        urlBreakdowns: [],
       },
       { status: 500 }
     );
