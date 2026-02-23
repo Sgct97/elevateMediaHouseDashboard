@@ -64,6 +64,25 @@ export function Dashboard({ brand }: DashboardProps) {
     }
   }, []);
 
+  const unhideCampaign = useCallback(async (id: string) => {
+    setHiddenCampaignIds(prev => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+    try {
+      const res = await fetch('/api/hidden-drops', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'unhide', campaignId: id }),
+      });
+      const data = await res.json();
+      setHiddenCampaignIds(new Set(data.hiddenIds));
+    } catch {
+      // Keep the optimistic update even if server call fails
+    }
+  }, []);
+
   const unhideAll = useCallback(async () => {
     setHiddenCampaignIds(new Set());
     try {
@@ -78,6 +97,9 @@ export function Dashboard({ brand }: DashboardProps) {
       // Keep the optimistic clear even if server call fails
     }
   }, []);
+
+  // Toggle for showing hidden drops list
+  const [showHiddenList, setShowHiddenList] = useState(false);
 
   const fetchData = useCallback(async (refresh = false) => {
     try {
@@ -300,15 +322,38 @@ export function Dashboard({ brand }: DashboardProps) {
 
         {/* Hidden drops indicator */}
         {hiddenCampaignIds.size > 0 && (
-          <div className="mb-4 flex items-center gap-3 text-sm text-[#718096]">
-            <span>{hiddenCampaignIds.size} drop{hiddenCampaignIds.size !== 1 ? 's' : ''} hidden</span>
-            <button
-              onClick={unhideAll}
-              className="px-3 py-1 text-xs border border-[#E2E8F0] hover:bg-[#F8FAFB] transition-colors"
-              style={{ color: brand.primaryColor, borderColor: brand.primaryColor }}
-            >
-              Show all
-            </button>
+          <div className="mb-4 bg-white border border-[#E2E8F0] text-sm">
+            <div className="px-4 py-2.5 flex items-center gap-3 text-[#718096]">
+              <button
+                onClick={() => setShowHiddenList(prev => !prev)}
+                className="flex items-center gap-1.5 hover:text-[#2D3748] transition-colors"
+              >
+                <span className="text-[10px]">{showHiddenList ? '▼' : '▶'}</span>
+                <span>{hiddenCampaignIds.size} drop{hiddenCampaignIds.size !== 1 ? 's' : ''} hidden</span>
+              </button>
+              <button
+                onClick={unhideAll}
+                className="px-3 py-1 text-xs border hover:bg-[#F8FAFB] transition-colors ml-auto"
+                style={{ color: brand.primaryColor, borderColor: brand.primaryColor }}
+              >
+                Show all
+              </button>
+            </div>
+            {showHiddenList && (
+              <div className="px-4 pb-3 flex flex-wrap gap-2">
+                {Array.from(hiddenCampaignIds).sort().map(id => (
+                  <button
+                    key={id}
+                    onClick={() => unhideCampaign(id)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-[#F8FAFB] border border-[#E2E8F0] text-[#718096] hover:bg-white hover:border-[#CBD5E0] transition-colors"
+                    title={`Unhide drop ${id}`}
+                  >
+                    Drop {id}
+                    <span className="text-[#A0AEC0] hover:text-[#2D3748]">✕</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

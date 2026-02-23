@@ -173,22 +173,16 @@ export function LinkClicksPivot({
               <div className="px-6 py-4 text-sm text-[#A0AEC0]">No URL data for this invoice.</div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full" style={{ tableLayout: 'fixed' }}>
-                  <colgroup>
-                    <col style={{ width: '72px' }} />
-                    {group.dropColumns.map((_, i) => (
-                      <col key={i} />
-                    ))}
-                  </colgroup>
+                <table>
                   <thead>
                     <tr className="border-b border-[#E2E8F0]">
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-[#718096] uppercase tracking-wider">
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-[#718096] uppercase tracking-wider whitespace-nowrap">
                         Link ID
                       </th>
                       {group.dropColumns.map((col, i) => (
                         <th
                           key={i}
-                          className="px-4 py-3 text-right text-xs font-semibold text-[#718096] uppercase tracking-wider"
+                          className="px-4 py-3 text-right text-xs font-semibold text-[#718096] uppercase tracking-wider whitespace-nowrap"
                         >
                           <div className="flex items-center justify-end gap-1.5">
                             <span>Clicks {col.date}</span>
