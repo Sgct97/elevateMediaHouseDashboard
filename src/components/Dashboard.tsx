@@ -37,6 +37,15 @@ export function Dashboard({ brand }: DashboardProps) {
   const [selectedDealership, setSelectedDealership] = useState('');
   const [selectedInvoice, setSelectedInvoice] = useState('');
 
+  // Hidden drops (by Campaign ID) — shared across both tables, session-only
+  const [hiddenCampaignIds, setHiddenCampaignIds] = useState<Set<string>>(new Set());
+  const hideCampaign = useCallback((id: string) => {
+    setHiddenCampaignIds(prev => new Set(prev).add(id));
+  }, []);
+  const unhideAll = useCallback(() => {
+    setHiddenCampaignIds(new Set());
+  }, []);
+
   const fetchData = useCallback(async (refresh = false) => {
     try {
       setIsRefreshing(true);
@@ -101,9 +110,15 @@ export function Dashboard({ brand }: DashboardProps) {
     });
   }, [data?.campaigns, selectedDealership, selectedInvoice, dateRange]);
 
+  // Remove hidden campaigns from the visible set
+  const visibleCampaigns = useMemo(() => {
+    if (hiddenCampaignIds.size === 0) return filteredCampaigns;
+    return filteredCampaigns.filter(c => !hiddenCampaignIds.has(String(c['Campaign ID'])));
+  }, [filteredCampaigns, hiddenCampaignIds]);
+
   // Calculate aggregates
   const aggregates = useMemo(() => {
-    const campaigns = filteredCampaigns;
+    const campaigns = visibleCampaigns;
     
     const totalCampaigns = campaigns.length;
     const totalOpens = campaigns.reduce((sum, c) => sum + (c['Total Opens'] || 0), 0);
@@ -114,7 +129,7 @@ export function Dashboard({ brand }: DashboardProps) {
     const avgClickRate = totalOpens > 0 ? (totalClicks / totalOpens) * 100 : 0;
 
     return { totalCampaigns, totalOpens, totalClicks, totalEmails, avgOpenRate, avgClickRate };
-  }, [filteredCampaigns]);
+  }, [visibleCampaigns]);
 
   // Date-filtered campaigns (before dealership/invoice filters) — used for cascading dropdowns
   const dateFilteredCampaigns = useMemo(() => {
@@ -250,15 +265,30 @@ export function Dashboard({ brand }: DashboardProps) {
           />
         </div>
 
+        {/* Hidden drops indicator */}
+        {hiddenCampaignIds.size > 0 && (
+          <div className="mb-4 flex items-center gap-3 text-sm text-[#718096]">
+            <span>{hiddenCampaignIds.size} drop{hiddenCampaignIds.size !== 1 ? 's' : ''} hidden</span>
+            <button
+              onClick={unhideAll}
+              className="px-3 py-1 text-xs border border-[#E2E8F0] hover:bg-[#F8FAFB] transition-colors"
+              style={{ color: brand.primaryColor, borderColor: brand.primaryColor }}
+            >
+              Show all
+            </button>
+          </div>
+        )}
+
         {/* Tables */}
         <div className="space-y-6">
           <DataTable
             title="Email Deployment Performance"
-            data={filteredCampaigns as unknown as Record<string, unknown>[]}
+            data={visibleCampaigns as unknown as Record<string, unknown>[]}
             loading={loading}
             accentColor={brand.primaryColor}
             defaultSortKey="Launch Date"
             defaultSortDirection="desc"
+            onHideRow={(row) => hideCampaign(String(row['Campaign ID']))}
             columns={[
               { key: 'Campaign ID' as keyof CampaignStats, header: 'Campaign ID' },
               { 
@@ -302,7 +332,7 @@ export function Dashboard({ brand }: DashboardProps) {
           />
 
           <LinkClicksPivot
-            campaigns={filteredCampaigns as unknown as Array<{
+            campaigns={visibleCampaigns as unknown as Array<{
               'Campaign ID': number | string;
               'Invoice #': string;
               'Campaign Title': string;
@@ -313,6 +343,7 @@ export function Dashboard({ brand }: DashboardProps) {
             }>}
             loading={loading}
             accentColor={brand.primaryColor}
+            onHideDrop={hideCampaign}
           />
         </div>
       </main>

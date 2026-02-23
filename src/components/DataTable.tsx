@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 
 interface Column<T> {
   key: keyof T;
@@ -19,6 +19,7 @@ interface DataTableProps<T> {
   accentColor?: string;
   defaultSortKey?: keyof T;
   defaultSortDirection?: 'asc' | 'desc';
+  onHideRow?: (row: T) => void;
 }
 
 export function DataTable<T extends Record<string, unknown>>({
@@ -30,6 +31,7 @@ export function DataTable<T extends Record<string, unknown>>({
   accentColor = '#4BA5A5',
   defaultSortKey = null as unknown as keyof T,
   defaultSortDirection = 'desc',
+  onHideRow,
 }: DataTableProps<T>) {
   const [currentPage, setCurrentPage] = useState(1);
   const [sortKey, setSortKey] = useState<keyof T | null>(defaultSortKey);
@@ -80,7 +82,13 @@ export function DataTable<T extends Record<string, unknown>>({
     });
   }, [data, sortKey, sortDirection]);
 
-  const totalPages = Math.ceil(sortedData.length / pageSize);
+  const totalPages = Math.max(1, Math.ceil(sortedData.length / pageSize));
+
+  // Clamp page when data shrinks (e.g. after hiding rows)
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [currentPage, totalPages]);
+
   const startIndex = (currentPage - 1) * pageSize;
   const paginatedData = sortedData.slice(startIndex, startIndex + pageSize);
 
@@ -112,6 +120,9 @@ export function DataTable<T extends Record<string, unknown>>({
             <table className="w-full">
               <thead>
                 <tr style={{ backgroundColor: '#F8FAFB' }}>
+                  {onHideRow && (
+                    <th className="w-8 border-b border-[#E2E8F0]" />
+                  )}
                   {columns.map((col) => (
                     <th
                       key={String(col.key)}
@@ -135,7 +146,7 @@ export function DataTable<T extends Record<string, unknown>>({
                 {paginatedData.length === 0 ? (
                   <tr>
                     <td 
-                      colSpan={columns.length} 
+                      colSpan={columns.length + (onHideRow ? 1 : 0)} 
                       className="px-5 py-12 text-center text-[#718096] text-sm"
                     >
                       No data available
@@ -145,8 +156,19 @@ export function DataTable<T extends Record<string, unknown>>({
                   paginatedData.map((row, idx) => (
                     <tr 
                       key={idx} 
-                      className="border-b border-[#F1F5F9] hover:bg-[#F8FAFB]"
+                      className="border-b border-[#F1F5F9] hover:bg-[#F8FAFB] group"
                     >
+                      {onHideRow && (
+                        <td className="w-8 text-center">
+                          <button
+                            onClick={() => onHideRow(row)}
+                            className="opacity-0 group-hover:opacity-100 text-[#CBD5E0] hover:text-[#E53E3E] transition-all text-xs"
+                            title="Hide this drop"
+                          >
+                            ✕
+                          </button>
+                        </td>
+                      )}
                       {columns.map((col) => (
                         <td 
                           key={String(col.key)} 
