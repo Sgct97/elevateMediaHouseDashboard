@@ -28,25 +28,42 @@ export function Filters({
     color: accentColor,
   };
 
+  const inputStyle = {
+    borderColor: accentColor,
+    color: '#2D3748',
+  };
+
   return (
-    <div className="flex flex-wrap gap-3">
-      {/* Date Range */}
-      <select
-        value={`${dateRange.start}|${dateRange.end}`}
-        onChange={(e) => {
-          const [start, end] = e.target.value.split('|');
-          onDateRangeChange({ start, end });
-        }}
-        className="px-4 py-2 text-sm border-2 bg-white min-w-[180px] focus:outline-none"
-        style={selectStyle}
-      >
-        <option value="|">Select date range</option>
-        <option value="last7|today">Last 7 days</option>
-        <option value="last30|today">Last 30 days</option>
-        <option value="last90|today">Last 90 days</option>
-        <option value="thisYear|today">This year</option>
-        <option value="all|all">All time</option>
-      </select>
+    <div className="flex flex-wrap gap-3 items-center">
+      {/* Date Range - Calendar Pickers */}
+      <div className="flex items-center gap-1.5">
+        <input
+          type="date"
+          value={dateRange.start}
+          onChange={(e) => onDateRangeChange({ ...dateRange, start: e.target.value })}
+          className="px-3 py-2 text-sm border-2 bg-white focus:outline-none cursor-pointer"
+          style={inputStyle}
+          placeholder="Start date"
+        />
+        <span className="text-sm text-[#718096]">to</span>
+        <input
+          type="date"
+          value={dateRange.end}
+          onChange={(e) => onDateRangeChange({ ...dateRange, end: e.target.value })}
+          className="px-3 py-2 text-sm border-2 bg-white focus:outline-none cursor-pointer"
+          style={inputStyle}
+          placeholder="End date"
+        />
+        {(dateRange.start || dateRange.end) && (
+          <button
+            onClick={() => onDateRangeChange({ start: '', end: '' })}
+            className="px-2 py-2 text-sm text-[#718096] hover:text-[#2D3748] transition-colors"
+            title="Clear dates"
+          >
+            ✕
+          </button>
+        )}
+      </div>
 
       {/* Dealership Filter */}
       <select

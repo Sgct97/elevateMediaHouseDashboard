@@ -5,8 +5,9 @@ import { Header } from './Header';
 import { KPICard } from './KPICard';
 import { DataTable } from './DataTable';
 import { Filters } from './Filters';
+import { LinkClicksPivot } from './LinkClicksPivot';
 import { BrandConfig } from '@/lib/brands';
-import { CampaignStats, URLBreakdown } from '@/lib/api';
+import { CampaignStats } from '@/lib/api';
 
 interface DashboardProps {
   brand: BrandConfig;
@@ -14,7 +15,14 @@ interface DashboardProps {
 
 interface DashboardData {
   campaigns: CampaignStats[];
-  urlBreakdowns: { campaignId: string; urls: URLBreakdown[] }[];
+  urlBreakdowns: { campaignId: string; urls: unknown[] }[];
+}
+
+// Helper to parse a date string into a date-only comparable (avoids UTC vs local timezone issues)
+function toDateOnly(str: string): number {
+  const d = new Date(str);
+  if (isNaN(d.getTime())) return NaN;
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 }
 
 export function Dashboard({ brand }: DashboardProps) {
@@ -28,8 +36,6 @@ export function Dashboard({ brand }: DashboardProps) {
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
   const [selectedDealership, setSelectedDealership] = useState('');
   const [selectedInvoice, setSelectedInvoice] = useState('');
-
-  const [forceRefresh, setForceRefresh] = useState(false);
 
   const fetchData = useCallback(async (refresh = false) => {
     try {
@@ -77,13 +83,18 @@ export function Dashboard({ brand }: DashboardProps) {
       if (dateRange.start || dateRange.end) {
         const launchStr = campaign['Launch Date'] || campaign['Create Date'];
         if (!launchStr) return false;
-        const launchDate = new Date(launchStr as string);
-        if (isNaN(launchDate.getTime())) return false;
-        if (dateRange.start && launchDate < new Date(dateRange.start)) return false;
+        const launchDay = toDateOnly(launchStr as string);
+        if (isNaN(launchDay)) return false;
+        if (dateRange.start) {
+          // Parse YYYY-MM-DD manually to avoid UTC offset
+          const [y, m, d] = dateRange.start.split('-').map(Number);
+          const startDay = new Date(y, m - 1, d).getTime();
+          if (launchDay < startDay) return false;
+        }
         if (dateRange.end) {
-          const endDate = new Date(dateRange.end);
-          endDate.setHours(23, 59, 59, 999);
-          if (launchDate > endDate) return false;
+          const [y, m, d] = dateRange.end.split('-').map(Number);
+          const endDay = new Date(y, m - 1, d).getTime();
+          if (launchDay > endDay) return false;
         }
       }
       return true;
@@ -105,32 +116,55 @@ export function Dashboard({ brand }: DashboardProps) {
     return { totalCampaigns, totalOpens, totalClicks, totalEmails, avgOpenRate, avgClickRate };
   }, [filteredCampaigns]);
 
-  // Extract filter options
-  const dealerships = useMemo(() => {
+  // Date-filtered campaigns (before dealership/invoice filters) — used for cascading dropdowns
+  const dateFilteredCampaigns = useMemo(() => {
     if (!data?.campaigns) return [];
-    const unique = new Set(data.campaigns.map(c => c['Campaign Title']).filter(Boolean));
+    if (!dateRange.start && !dateRange.end) return data.campaigns;
+
+    return data.campaigns.filter(campaign => {
+      const launchStr = campaign['Launch Date'] || campaign['Create Date'];
+      if (!launchStr) return false;
+      const launchDay = toDateOnly(launchStr as string);
+      if (isNaN(launchDay)) return false;
+      if (dateRange.start) {
+        const [y, m, d] = dateRange.start.split('-').map(Number);
+        if (launchDay < new Date(y, m - 1, d).getTime()) return false;
+      }
+      if (dateRange.end) {
+        const [y, m, d] = dateRange.end.split('-').map(Number);
+        if (launchDay > new Date(y, m - 1, d).getTime()) return false;
+      }
+      return true;
+    });
+  }, [data?.campaigns, dateRange]);
+
+  // Cascading filter options — dealerships narrow by date, invoices narrow by date + dealership
+  const dealerships = useMemo(() => {
+    const unique = new Set(dateFilteredCampaigns.map(c => c['Campaign Title']).filter(Boolean));
     return Array.from(unique).sort();
-  }, [data?.campaigns]);
+  }, [dateFilteredCampaigns]);
 
   const invoices = useMemo(() => {
-    if (!data?.campaigns) return [];
-    const unique = new Set(data.campaigns.map(c => c['Invoice #']).filter(Boolean));
+    let pool = dateFilteredCampaigns;
+    if (selectedDealership) {
+      pool = pool.filter(c => c['Campaign Title'] === selectedDealership);
+    }
+    const unique = new Set(pool.map(c => c['Invoice #']).filter(Boolean));
     return Array.from(unique).sort();
-  }, [data?.campaigns]);
+  }, [dateFilteredCampaigns, selectedDealership]);
 
+  // Auto-clear stale selections when filter options change
+  useEffect(() => {
+    if (selectedDealership && !dealerships.includes(selectedDealership)) {
+      setSelectedDealership('');
+    }
+  }, [dealerships, selectedDealership]);
 
-  // URL data - extract from FILTERED campaigns so filters apply to Link Clicks too
-  const urlData = useMemo(() => {
-    if (!filteredCampaigns.length) return [];
-    
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (filteredCampaigns as any[]).flatMap((campaign) => {
-      const urls = (campaign['URL Breakdown'] as Array<Record<string, unknown>>) || [];
-      const campaignId = String(campaign['Campaign ID'] || '');
-      const date = campaign['Launch Date'] || campaign['Create Date'] || '';
-      return urls.map(url => ({ ...url, campaignId, Date: date }));
-    });
-  }, [filteredCampaigns]);
+  useEffect(() => {
+    if (selectedInvoice && !invoices.includes(selectedInvoice)) {
+      setSelectedInvoice('');
+    }
+  }, [invoices, selectedInvoice]);
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#FAFBFC' }}>
@@ -267,54 +301,20 @@ export function Dashboard({ brand }: DashboardProps) {
             ]}
           />
 
-          <DataTable
-            title="Link Clicks Summary"
-            data={urlData as Record<string, unknown>[]}
+          <LinkClicksPivot
+            campaigns={filteredCampaigns as unknown as Array<{
+              'Campaign ID': number | string;
+              'Invoice #': string;
+              'Campaign Title': string;
+              'Launch Date': string | null;
+              'Create Date': string | null;
+              'URL Breakdown'?: Array<{ URLID: number; Clicks: number; 'Unique Clicks': number; URL: string }>;
+              [key: string]: unknown;
+            }>}
             loading={loading}
             accentColor={brand.primaryColor}
-            defaultSortKey="Date"
-            defaultSortDirection="desc"
-            columns={[
-              { key: 'URLID', header: 'URL ID' },
-              { key: 'campaignId', header: 'Campaign' },
-              { 
-                key: 'Date', 
-                header: 'Date',
-                render: (value: unknown) => {
-                  if (!value) return '—';
-                  const date = new Date(value as string);
-                  return isNaN(date.getTime()) ? String(value) : date.toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric'
-                  });
-                }
-              },
-              { 
-                key: 'Clicks', 
-                header: 'Clicks',
-                align: 'right' as const,
-                render: (value: unknown) => (value as number)?.toLocaleString() ?? '—'
-              },
-              { 
-                key: 'Unique Clicks', 
-                header: 'Unique Clicks',
-                align: 'right' as const,
-                render: (value: unknown) => (value as number)?.toLocaleString() ?? '—'
-              },
-              { 
-                key: 'URL', 
-                header: 'URL',
-                render: (value) => (
-                  <span 
-                    className="text-[#718096] truncate block max-w-[300px]" 
-                    title={value as string}
-                  >
-                    {value as string}
-                  </span>
-                )
-              },
-            ]}
+            invoices={invoices}
+            selectedInvoice={selectedInvoice}
           />
         </div>
       </main>
