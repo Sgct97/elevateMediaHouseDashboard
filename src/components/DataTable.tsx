@@ -162,7 +162,7 @@ export function DataTable<T extends Record<string, unknown>>({
                         <td className="w-8 text-center">
                           <button
                             onClick={() => onHideRow(row)}
-                            className="opacity-0 group-hover:opacity-100 text-[#CBD5E0] hover:text-[#E53E3E] transition-all text-xs"
+                            className="text-[#CBD5E0] hover:text-[#E53E3E] transition-colors text-xs"
                             title="Hide this drop"
                           >
                             ✕

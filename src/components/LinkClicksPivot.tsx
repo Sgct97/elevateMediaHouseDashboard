@@ -173,23 +173,29 @@ export function LinkClicksPivot({
               <div className="px-6 py-4 text-sm text-[#A0AEC0]">No URL data for this invoice.</div>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full">
+                <table className="w-full" style={{ tableLayout: 'fixed' }}>
+                  <colgroup>
+                    <col style={{ width: '72px' }} />
+                    {group.dropColumns.map((_, i) => (
+                      <col key={i} />
+                    ))}
+                  </colgroup>
                   <thead>
                     <tr className="border-b border-[#E2E8F0]">
-                      <th className="w-20 px-4 py-3 text-left text-xs font-semibold text-[#718096] uppercase tracking-wider">
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-[#718096] uppercase tracking-wider">
                         Link ID
                       </th>
                       {group.dropColumns.map((col, i) => (
                         <th
                           key={i}
-                          className="px-6 py-3 text-right text-xs font-semibold text-[#718096] uppercase tracking-wider group/col"
+                          className="px-4 py-3 text-right text-xs font-semibold text-[#718096] uppercase tracking-wider"
                         >
-                          <div className="flex items-center justify-end gap-1">
+                          <div className="flex items-center justify-end gap-1.5">
                             <span>Clicks {col.date}</span>
                             {onHideDrop && (
                               <button
                                 onClick={() => onHideDrop(col.campaignId)}
-                                className="opacity-0 group-hover/col:opacity-100 text-[#CBD5E0] hover:text-[#E53E3E] transition-all text-[10px] ml-1"
+                                className="text-[#CBD5E0] hover:text-[#E53E3E] transition-colors text-[10px] leading-none"
                                 title={`Hide drop ${col.campaignId}`}
                               >
                                 ✕
@@ -211,11 +217,11 @@ export function LinkClicksPivot({
                           i % 2 === 0 ? 'bg-white' : 'bg-[#FAFBFC]'
                         }`}
                       >
-                        <td className="w-20 px-4 py-3 text-sm text-[#2D3748] font-medium">
+                        <td className="px-4 py-3 text-sm text-[#2D3748] font-medium">
                           {row['Link ID'] as number}
                         </td>
                         {group.dropColumns.map((col, j) => (
-                          <td key={j} className="px-6 py-3 text-sm text-[#2D3748] text-right">
+                          <td key={j} className="px-4 py-3 text-sm text-[#2D3748] text-right">
                             {((row[`drop_${col.campaignId}`] as number) || 0).toLocaleString()}
                           </td>
                         ))}

@@ -37,13 +37,46 @@ export function Dashboard({ brand }: DashboardProps) {
   const [selectedDealership, setSelectedDealership] = useState('');
   const [selectedInvoice, setSelectedInvoice] = useState('');
 
-  // Hidden drops (by Campaign ID) — shared across both tables, session-only
+  // Hidden drops (by Campaign ID) — server-persisted, shared across all users
   const [hiddenCampaignIds, setHiddenCampaignIds] = useState<Set<string>>(new Set());
-  const hideCampaign = useCallback((id: string) => {
-    setHiddenCampaignIds(prev => new Set(prev).add(id));
+
+  // Fetch hidden IDs from server on mount
+  useEffect(() => {
+    fetch('/api/hidden-drops')
+      .then(res => res.json())
+      .then(data => setHiddenCampaignIds(new Set(data.hiddenIds || [])))
+      .catch(() => {}); // fail silently — no hidden drops if server is down
   }, []);
-  const unhideAll = useCallback(() => {
+
+  const hideCampaign = useCallback(async (id: string) => {
+    // Optimistic update
+    setHiddenCampaignIds(prev => new Set(prev).add(id));
+    try {
+      const res = await fetch('/api/hidden-drops', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'hide', campaignId: id }),
+      });
+      const data = await res.json();
+      setHiddenCampaignIds(new Set(data.hiddenIds));
+    } catch {
+      // Keep the optimistic update even if server call fails
+    }
+  }, []);
+
+  const unhideAll = useCallback(async () => {
     setHiddenCampaignIds(new Set());
+    try {
+      const res = await fetch('/api/hidden-drops', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'unhideAll' }),
+      });
+      const data = await res.json();
+      setHiddenCampaignIds(new Set(data.hiddenIds));
+    } catch {
+      // Keep the optimistic clear even if server call fails
+    }
   }, []);
 
   const fetchData = useCallback(async (refresh = false) => {
