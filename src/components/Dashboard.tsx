@@ -313,8 +313,6 @@ export function Dashboard({ brand }: DashboardProps) {
             }>}
             loading={loading}
             accentColor={brand.primaryColor}
-            invoices={invoices}
-            selectedInvoice={selectedInvoice}
           />
         </div>
       </main>
