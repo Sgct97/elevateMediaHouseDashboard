@@ -272,6 +272,43 @@ export function Dashboard({ brand }: DashboardProps) {
           />
         </div>
 
+        {/* Hidden drops indicator */}
+        {hiddenCampaignIds.size > 0 && (
+          <div className="mb-6 bg-white border border-[#E2E8F0] text-sm">
+            <div className="px-4 py-2.5 flex items-center gap-3 text-[#718096]">
+              <button
+                onClick={() => setShowHiddenList(prev => !prev)}
+                className="flex items-center gap-1.5 hover:text-[#2D3748] transition-colors"
+              >
+                <span className="text-[10px]">{showHiddenList ? '▼' : '▶'}</span>
+                <span>{hiddenCampaignIds.size} drop{hiddenCampaignIds.size !== 1 ? 's' : ''} hidden</span>
+              </button>
+              <button
+                onClick={unhideAll}
+                className="px-3 py-1 text-xs border hover:bg-[#F8FAFB] transition-colors ml-auto"
+                style={{ color: brand.primaryColor, borderColor: brand.primaryColor }}
+              >
+                Show all
+              </button>
+            </div>
+            {showHiddenList && (
+              <div className="px-4 pb-3 flex flex-wrap gap-2">
+                {Array.from(hiddenCampaignIds).sort().map(id => (
+                  <button
+                    key={id}
+                    onClick={() => unhideCampaign(id)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-[#F8FAFB] border border-[#E2E8F0] text-[#718096] hover:bg-white hover:border-[#CBD5E0] transition-colors"
+                    title={`Unhide drop ${id}`}
+                  >
+                    Drop {id}
+                    <span className="text-[#A0AEC0] hover:text-[#2D3748]">✕</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Error State */}
         {error && (
           <div className="mb-6 p-4 bg-white border border-[#E2E8F0] text-sm text-[#718096]">
@@ -319,43 +356,6 @@ export function Dashboard({ brand }: DashboardProps) {
             format="percentage"
           />
         </div>
-
-        {/* Hidden drops indicator */}
-        {hiddenCampaignIds.size > 0 && (
-          <div className="mb-4 bg-white border border-[#E2E8F0] text-sm">
-            <div className="px-4 py-2.5 flex items-center gap-3 text-[#718096]">
-              <button
-                onClick={() => setShowHiddenList(prev => !prev)}
-                className="flex items-center gap-1.5 hover:text-[#2D3748] transition-colors"
-              >
-                <span className="text-[10px]">{showHiddenList ? '▼' : '▶'}</span>
-                <span>{hiddenCampaignIds.size} drop{hiddenCampaignIds.size !== 1 ? 's' : ''} hidden</span>
-              </button>
-              <button
-                onClick={unhideAll}
-                className="px-3 py-1 text-xs border hover:bg-[#F8FAFB] transition-colors ml-auto"
-                style={{ color: brand.primaryColor, borderColor: brand.primaryColor }}
-              >
-                Show all
-              </button>
-            </div>
-            {showHiddenList && (
-              <div className="px-4 pb-3 flex flex-wrap gap-2">
-                {Array.from(hiddenCampaignIds).sort().map(id => (
-                  <button
-                    key={id}
-                    onClick={() => unhideCampaign(id)}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs bg-[#F8FAFB] border border-[#E2E8F0] text-[#718096] hover:bg-white hover:border-[#CBD5E0] transition-colors"
-                    title={`Unhide drop ${id}`}
-                  >
-                    Drop {id}
-                    <span className="text-[#A0AEC0] hover:text-[#2D3748]">✕</span>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Tables */}
         <div className="space-y-6">
