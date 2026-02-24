@@ -329,18 +329,18 @@ export function Dashboard({ brand }: DashboardProps) {
             loading={loading}
           />
           <KPICard
-            title="Total Opens"
+            title="Total Emails Sent"
+            value={aggregates.totalEmails}
+            loading={loading}
+          />
+          <KPICard
+            title="Sum Total Opens"
             value={aggregates.totalOpens}
             loading={loading}
           />
           <KPICard
-            title="Total Clicks"
+            title="Sum Total Clicks"
             value={aggregates.totalClicks}
-            loading={loading}
-          />
-          <KPICard
-            title="Total Emails Sent"
-            value={aggregates.totalEmails}
             loading={loading}
           />
           <KPICard
@@ -368,7 +368,6 @@ export function Dashboard({ brand }: DashboardProps) {
             defaultSortDirection="desc"
             onHideRow={(row) => hideCampaign(String(row['Campaign ID']))}
             columns={[
-              { key: 'Campaign ID' as keyof CampaignStats, header: 'Campaign ID' },
               { 
                 key: 'Launch Date' as keyof CampaignStats, 
                 header: 'Launch Date',
