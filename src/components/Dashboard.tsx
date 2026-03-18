@@ -6,8 +6,10 @@ import { KPICard } from './KPICard';
 import { DataTable } from './DataTable';
 import { Filters } from './Filters';
 import { LinkClicksPivot } from './LinkClicksPivot';
+import { AdStirSection } from './AdStirSection';
 import { BrandConfig } from '@/lib/brands';
 import { CampaignStats } from '@/lib/api';
+import type { AdStirRecord } from '@/app/api/adstir/route';
 
 interface DashboardProps {
   brand: BrandConfig;
@@ -101,6 +103,10 @@ export function Dashboard({ brand }: DashboardProps) {
   // Toggle for showing hidden drops list
   const [showHiddenList, setShowHiddenList] = useState(false);
 
+  // AdStir retargeting data
+  const [adstirData, setAdstirData] = useState<AdStirRecord[]>([]);
+  const [adstirLoading, setAdstirLoading] = useState(true);
+
   const fetchData = useCallback(async (refresh = false) => {
     try {
       setIsRefreshing(true);
@@ -125,12 +131,32 @@ export function Dashboard({ brand }: DashboardProps) {
     }
   }, []);
 
+  const fetchAdstirData = useCallback(async (refresh = false) => {
+    try {
+      setAdstirLoading(true);
+      const url = refresh ? '/api/adstir?refresh=true' : '/api/adstir';
+      const response = await fetch(url);
+      if (response.ok) {
+        const result = await response.json();
+        setAdstirData(result.data || []);
+      }
+    } catch {
+      // fail silently — adstir section will show empty state
+    } finally {
+      setAdstirLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchData();
-    // Auto-refresh every 15 minutes (checks for new campaigns)
-    const interval = setInterval(() => fetchData(true), 15 * 60 * 1000);
+    fetchAdstirData();
+    // Auto-refresh every 15 minutes (checks for new campaigns + new AdStir data)
+    const interval = setInterval(() => {
+      fetchData(true);
+      fetchAdstirData(true);
+    }, 15 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [fetchData]);
+  }, [fetchData, fetchAdstirData]);
 
   // Filter the data
   const filteredCampaigns = useMemo(() => {
@@ -421,6 +447,12 @@ export function Dashboard({ brand }: DashboardProps) {
             loading={loading}
             accentColor={brand.primaryColor}
             onHideDrop={hideCampaign}
+          />
+
+          <AdStirSection
+            data={adstirData}
+            loading={adstirLoading}
+            accentColor={brand.primaryColor}
           />
         </div>
       </main>
