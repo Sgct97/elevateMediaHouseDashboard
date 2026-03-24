@@ -12,6 +12,7 @@ interface AdStirSectionProps {
 export function AdStirSection({ data, loading, accentColor }: AdStirSectionProps) {
   const [selectedAdvertiser, setSelectedAdvertiser] = useState('');
   const [showClicks, setShowClicks] = useState(true);
+  const [showVCR, setShowVCR] = useState(true);
   const [costInput, setCostInput] = useState('');
   const [sortKey, setSortKey] = useState<string>('date');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
@@ -196,6 +197,17 @@ export function AdStirSection({ data, loading, accentColor }: AdStirSectionProps
               <option key={a} value={a}>{a}</option>
             ))}
           </select>
+          {/* VCR toggle */}
+          <label className="flex items-center gap-1.5 text-xs text-[#718096] cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={showVCR}
+              onChange={(e) => setShowVCR(e.target.checked)}
+              className="accent-current"
+              style={{ accentColor: accentColor }}
+            />
+            Show VCR
+          </label>
           {/* Clicks toggle */}
           <label className="flex items-center gap-1.5 text-xs text-[#718096] cursor-pointer select-none">
             <input
@@ -245,12 +257,14 @@ export function AdStirSection({ data, loading, accentColor }: AdStirSectionProps
               >
                 Frequency{sortIndicator('frequency')}
               </th>
-              <th
-                className="px-4 py-2.5 text-right text-[10px] uppercase tracking-wider font-semibold text-[#A0AEC0] cursor-pointer whitespace-nowrap hover:text-[#4A5568]"
-                onClick={() => handleSort('vcr')}
-              >
-                VCR{sortIndicator('vcr')}
-              </th>
+              {showVCR && (
+                <th
+                  className="px-4 py-2.5 text-right text-[10px] uppercase tracking-wider font-semibold text-[#A0AEC0] cursor-pointer whitespace-nowrap hover:text-[#4A5568]"
+                  onClick={() => handleSort('vcr')}
+                >
+                  VCR{sortIndicator('vcr')}
+                </th>
+              )}
               {showClicks && (
                 <th
                   className="px-4 py-2.5 text-right text-[10px] uppercase tracking-wider font-semibold text-[#A0AEC0] cursor-pointer whitespace-nowrap hover:text-[#4A5568]"
@@ -272,7 +286,9 @@ export function AdStirSection({ data, loading, accentColor }: AdStirSectionProps
                 <td className="px-4 py-2.5 text-right text-[#4A5568]">{row.impressions.toLocaleString()}</td>
                 <td className="px-4 py-2.5 text-right text-[#4A5568]">{row.reach.toLocaleString()}</td>
                 <td className="px-4 py-2.5 text-right text-[#4A5568]">{row.frequency}</td>
-                <td className="px-4 py-2.5 text-right text-[#4A5568]">{row.vcr}%</td>
+                {showVCR && (
+                  <td className="px-4 py-2.5 text-right text-[#4A5568]">{row.vcr}%</td>
+                )}
                 {showClicks && (
                   <td className="px-4 py-2.5 text-right text-[#4A5568]">{row.clicks.toLocaleString()}</td>
                 )}
@@ -280,7 +296,7 @@ export function AdStirSection({ data, loading, accentColor }: AdStirSectionProps
             ))}
             {paged.length === 0 && (
               <tr>
-                <td colSpan={showClicks ? 7 : 6} className="px-4 py-8 text-center text-[#A0AEC0]">
+                <td colSpan={5 + (showVCR ? 1 : 0) + (showClicks ? 1 : 0)} className="px-4 py-8 text-center text-[#A0AEC0]">
                   No data matches the selected filters.
                 </td>
               </tr>
