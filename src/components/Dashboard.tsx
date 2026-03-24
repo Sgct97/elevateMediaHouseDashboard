@@ -36,8 +36,8 @@ export function Dashboard({ brand }: DashboardProps) {
 
   // Filters
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
-  const [selectedDealership, setSelectedDealership] = useState('');
-  const [selectedInvoice, setSelectedInvoice] = useState('');
+  const [selectedDealerships, setSelectedDealerships] = useState<Set<string>>(new Set());
+  const [selectedInvoices, setSelectedInvoices] = useState<Set<string>>(new Set());
 
   // Hidden drops (by Campaign ID) — server-persisted, shared across all users
   const [hiddenCampaignIds, setHiddenCampaignIds] = useState<Set<string>>(new Set());
@@ -163,10 +163,10 @@ export function Dashboard({ brand }: DashboardProps) {
     if (!data?.campaigns) return [];
     
     return data.campaigns.filter(campaign => {
-      if (selectedDealership && campaign['Campaign Title'] !== selectedDealership) {
+      if (selectedDealerships.size > 0 && !selectedDealerships.has(campaign['Campaign Title'])) {
         return false;
       }
-      if (selectedInvoice && campaign['Invoice #'] !== selectedInvoice) {
+      if (selectedInvoices.size > 0 && !selectedInvoices.has(campaign['Invoice #'])) {
         return false;
       }
       // Date range filter
@@ -176,7 +176,6 @@ export function Dashboard({ brand }: DashboardProps) {
         const launchDay = toDateOnly(launchStr as string);
         if (isNaN(launchDay)) return false;
         if (dateRange.start) {
-          // Parse YYYY-MM-DD manually to avoid UTC offset
           const [y, m, d] = dateRange.start.split('-').map(Number);
           const startDay = new Date(y, m - 1, d).getTime();
           if (launchDay < startDay) return false;
@@ -189,7 +188,7 @@ export function Dashboard({ brand }: DashboardProps) {
       }
       return true;
     });
-  }, [data?.campaigns, selectedDealership, selectedInvoice, dateRange]);
+  }, [data?.campaigns, selectedDealerships, selectedInvoices, dateRange]);
 
   // Remove hidden campaigns from the visible set
   const visibleCampaigns = useMemo(() => {
@@ -242,25 +241,31 @@ export function Dashboard({ brand }: DashboardProps) {
 
   const invoices = useMemo(() => {
     let pool = dateFilteredCampaigns;
-    if (selectedDealership) {
-      pool = pool.filter(c => c['Campaign Title'] === selectedDealership);
+    if (selectedDealerships.size > 0) {
+      pool = pool.filter(c => selectedDealerships.has(c['Campaign Title']));
     }
     const unique = new Set(pool.map(c => c['Invoice #']).filter(Boolean));
     return Array.from(unique).sort();
-  }, [dateFilteredCampaigns, selectedDealership]);
+  }, [dateFilteredCampaigns, selectedDealerships]);
 
   // Auto-clear stale selections when filter options change
   useEffect(() => {
-    if (selectedDealership && !dealerships.includes(selectedDealership)) {
-      setSelectedDealership('');
+    if (selectedDealerships.size > 0) {
+      const valid = new Set(Array.from(selectedDealerships).filter(d => dealerships.includes(d)));
+      if (valid.size !== selectedDealerships.size) {
+        setSelectedDealerships(valid);
+      }
     }
-  }, [dealerships, selectedDealership]);
+  }, [dealerships, selectedDealerships]);
 
   useEffect(() => {
-    if (selectedInvoice && !invoices.includes(selectedInvoice)) {
-      setSelectedInvoice('');
+    if (selectedInvoices.size > 0) {
+      const valid = new Set(Array.from(selectedInvoices).filter(i => invoices.includes(i)));
+      if (valid.size !== selectedInvoices.size) {
+        setSelectedInvoices(valid);
+      }
     }
-  }, [invoices, selectedInvoice]);
+  }, [invoices, selectedInvoices]);
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: '#FAFBFC' }}>
@@ -289,11 +294,11 @@ export function Dashboard({ brand }: DashboardProps) {
             dateRange={dateRange}
             onDateRangeChange={setDateRange}
             dealerships={dealerships}
-            selectedDealership={selectedDealership}
-            onDealershipChange={setSelectedDealership}
+            selectedDealerships={selectedDealerships}
+            onDealershipsChange={setSelectedDealerships}
             invoices={invoices}
-            selectedInvoice={selectedInvoice}
-            onInvoiceChange={setSelectedInvoice}
+            selectedInvoices={selectedInvoices}
+            onInvoicesChange={setSelectedInvoices}
             accentColor={brand.primaryColor}
           />
         </div>

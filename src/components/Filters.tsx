@@ -1,33 +1,117 @@
 'use client';
 
+import { useState, useRef, useEffect } from 'react';
+
 interface FiltersProps {
   dateRange: { start: string; end: string };
   onDateRangeChange: (range: { start: string; end: string }) => void;
   dealerships: string[];
-  selectedDealership: string;
-  onDealershipChange: (dealership: string) => void;
+  selectedDealerships: Set<string>;
+  onDealershipsChange: (dealerships: Set<string>) => void;
   invoices: string[];
-  selectedInvoice: string;
-  onInvoiceChange: (invoice: string) => void;
+  selectedInvoices: Set<string>;
+  onInvoicesChange: (invoices: Set<string>) => void;
   accentColor?: string;
+}
+
+function MultiSelectDropdown({
+  label,
+  options,
+  selected,
+  onChange,
+  accentColor,
+}: {
+  label: string;
+  options: string[];
+  selected: Set<string>;
+  onChange: (selected: Set<string>) => void;
+  accentColor: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const toggle = (value: string) => {
+    const next = new Set(selected);
+    if (next.has(value)) {
+      next.delete(value);
+    } else {
+      next.add(value);
+    }
+    onChange(next);
+  };
+
+  const displayText = selected.size === 0
+    ? label
+    : selected.size === 1
+      ? Array.from(selected)[0]
+      : `${selected.size} selected`;
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(prev => !prev)}
+        className="px-4 py-2 text-sm border-2 bg-white min-w-[200px] text-left flex items-center justify-between gap-2 focus:outline-none"
+        style={{ borderColor: accentColor, color: selected.size > 0 ? '#2D3748' : accentColor }}
+      >
+        <span className="truncate">{displayText}</span>
+        <span className="text-[10px]">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="absolute z-50 mt-1 w-full bg-white border border-[#E2E8F0] shadow-lg max-h-60 overflow-y-auto">
+          {selected.size > 0 && (
+            <button
+              onClick={() => onChange(new Set())}
+              className="w-full px-3 py-1.5 text-xs text-left hover:bg-[#F8FAFB] transition-colors"
+              style={{ color: accentColor }}
+            >
+              Clear all
+            </button>
+          )}
+          {options.map(option => (
+            <label
+              key={option}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm text-[#4A5568] hover:bg-[#F8FAFB] cursor-pointer transition-colors"
+            >
+              <input
+                type="checkbox"
+                checked={selected.has(option)}
+                onChange={() => toggle(option)}
+                className="accent-current"
+                style={{ accentColor }}
+              />
+              <span className="truncate">{option}</span>
+            </label>
+          ))}
+          {options.length === 0 && (
+            <div className="px-3 py-2 text-xs text-[#A0AEC0]">No options available</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function Filters({
   dateRange,
   onDateRangeChange,
   dealerships,
-  selectedDealership,
-  onDealershipChange,
+  selectedDealerships,
+  onDealershipsChange,
   invoices,
-  selectedInvoice,
-  onInvoiceChange,
+  selectedInvoices,
+  onInvoicesChange,
   accentColor = '#4BA5A5',
 }: FiltersProps) {
-  const selectStyle = {
-    borderColor: accentColor,
-    color: accentColor,
-  };
-
   const inputStyle = {
     borderColor: accentColor,
     color: '#2D3748',
@@ -65,31 +149,23 @@ export function Filters({
         )}
       </div>
 
-      {/* Dealership Filter */}
-      <select
-        value={selectedDealership}
-        onChange={(e) => onDealershipChange(e.target.value)}
-        className="px-4 py-2 text-sm border-2 bg-white min-w-[200px] focus:outline-none"
-        style={selectStyle}
-      >
-        <option value="">Dealership (Campaign Title)</option>
-        {dealerships.map((d) => (
-          <option key={d} value={d}>{d}</option>
-        ))}
-      </select>
+      {/* Dealership Filter - Multi-select */}
+      <MultiSelectDropdown
+        label="Dealership (Campaign Title)"
+        options={dealerships}
+        selected={selectedDealerships}
+        onChange={onDealershipsChange}
+        accentColor={accentColor}
+      />
 
-      {/* Invoice Filter */}
-      <select
-        value={selectedInvoice}
-        onChange={(e) => onInvoiceChange(e.target.value)}
-        className="px-4 py-2 text-sm border-2 bg-white min-w-[140px] focus:outline-none"
-        style={selectStyle}
-      >
-        <option value="">Invoice #</option>
-        {invoices.map((i) => (
-          <option key={i} value={i}>{i}</option>
-        ))}
-      </select>
+      {/* Invoice Filter - Multi-select */}
+      <MultiSelectDropdown
+        label="Invoice #"
+        options={invoices}
+        selected={selectedInvoices}
+        onChange={onInvoicesChange}
+        accentColor={accentColor}
+      />
     </div>
   );
 }

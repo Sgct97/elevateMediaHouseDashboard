@@ -273,6 +273,11 @@ export function AdStirSection({ data, loading, accentColor }: AdStirSectionProps
                   Clicks{sortIndicator('clicks')}
                 </th>
               )}
+              {cpcv && (
+                <th className="px-4 py-2.5 text-right text-[10px] uppercase tracking-wider font-semibold text-[#A0AEC0] whitespace-nowrap">
+                  CPCV
+                </th>
+              )}
             </tr>
           </thead>
           <tbody>
@@ -292,11 +297,16 @@ export function AdStirSection({ data, loading, accentColor }: AdStirSectionProps
                 {showClicks && (
                   <td className="px-4 py-2.5 text-right text-[#4A5568]">{row.clicks.toLocaleString()}</td>
                 )}
+                {cpcv && (
+                  <td className="px-4 py-2.5 text-right font-semibold" style={{ color: row.completedViews > 0 ? accentColor : '#A0AEC0' }}>
+                    {row.completedViews > 0 ? `$${cpcv}` : '—'}
+                  </td>
+                )}
               </tr>
             ))}
             {paged.length === 0 && (
               <tr>
-                <td colSpan={5 + (showVCR ? 1 : 0) + (showClicks ? 1 : 0)} className="px-4 py-8 text-center text-[#A0AEC0]">
+                <td colSpan={5 + (showVCR ? 1 : 0) + (showClicks ? 1 : 0) + (cpcv ? 1 : 0)} className="px-4 py-8 text-center text-[#A0AEC0]">
                   No data matches the selected filters.
                 </td>
               </tr>
