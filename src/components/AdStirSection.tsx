@@ -161,12 +161,30 @@ export function AdStirSection({ data, loading, accentColor }: AdStirSectionProps
 
   return (
     <div className="bg-white border border-[#E2E8F0]">
-      {/* Header */}
+      {/* Header with CPCV Calculator and Advertiser Picker */}
       <div className="px-4 py-3 border-b border-[#E2E8F0] flex items-center justify-between flex-wrap gap-3">
         <h2 className="text-sm font-semibold text-[#2D3748] uppercase tracking-wide">
           AdStir Retargeting Performance
         </h2>
         <div className="flex items-center gap-4 flex-wrap">
+          {/* CPCV Calculator */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold text-[#4A5568] uppercase tracking-wide">CPCV</span>
+            <span className="text-xs text-[#718096]">$</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              value={costInput}
+              onChange={(e) => setCostInput(e.target.value)}
+              placeholder="Cost"
+              className="text-xs border border-[#E2E8F0] px-2 py-1.5 w-24 text-[#2D3748] bg-white"
+            />
+            <span className="text-xs text-[#718096]">÷ {totals.completedViews.toLocaleString()} views =</span>
+            <span className="text-sm font-semibold" style={{ color: cpcv ? accentColor : '#A0AEC0' }}>
+              {cpcv ? `$${cpcv}` : '—'}
+            </span>
+          </div>
           {/* Advertiser filter */}
           <select
             value={selectedAdvertiser}
@@ -190,55 +208,6 @@ export function AdStirSection({ data, loading, accentColor }: AdStirSectionProps
             Show Clicks
           </label>
         </div>
-      </div>
-
-      {/* KPI Summary Row */}
-      <div className={`grid ${showClicks ? 'grid-cols-5' : 'grid-cols-4'} gap-px bg-[#E2E8F0] border-b border-[#E2E8F0]`}>
-        <div className="bg-white px-4 py-3">
-          <div className="text-[10px] uppercase tracking-wider text-[#A0AEC0] font-semibold mb-1">Impressions</div>
-          <div className="text-lg font-light text-[#2D3748]">{totals.impressions.toLocaleString()}</div>
-        </div>
-        <div className="bg-white px-4 py-3">
-          <div className="text-[10px] uppercase tracking-wider text-[#A0AEC0] font-semibold mb-1">Reach</div>
-          <div className="text-lg font-light text-[#2D3748]">{totals.reach.toLocaleString()}</div>
-        </div>
-        <div className="bg-white px-4 py-3">
-          <div className="text-[10px] uppercase tracking-wider text-[#A0AEC0] font-semibold mb-1">Frequency</div>
-          <div className="text-lg font-light text-[#2D3748]">{totals.frequency}</div>
-        </div>
-        <div className="bg-white px-4 py-3">
-          <div className="text-[10px] uppercase tracking-wider text-[#A0AEC0] font-semibold mb-1">VCR</div>
-          <div className="text-lg font-light text-[#2D3748]">{totals.vcr}%</div>
-        </div>
-        {showClicks && (
-          <div className="bg-white px-4 py-3">
-            <div className="text-[10px] uppercase tracking-wider text-[#A0AEC0] font-semibold mb-1">Clicks</div>
-            <div className="text-lg font-light text-[#2D3748]">{totals.clicks.toLocaleString()}</div>
-          </div>
-        )}
-      </div>
-
-      {/* CPCV Calculator */}
-      <div className="px-4 py-3 border-b border-[#E2E8F0] bg-[#F8FAFB] flex items-center gap-4 flex-wrap">
-        <span className="text-xs font-semibold text-[#4A5568] uppercase tracking-wide">CPCV Calculator</span>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-[#718096]">Cost $</span>
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={costInput}
-            onChange={(e) => setCostInput(e.target.value)}
-            placeholder="Enter cost"
-            className="text-sm border border-[#E2E8F0] px-2 py-1 w-32 text-[#2D3748] bg-white"
-          />
-        </div>
-        <span className="text-xs text-[#718096]">÷</span>
-        <span className="text-xs text-[#4A5568]">{totals.completedViews.toLocaleString()} completed views</span>
-        <span className="text-xs text-[#718096]">=</span>
-        <span className="text-sm font-semibold" style={{ color: cpcv ? accentColor : '#A0AEC0' }}>
-          {cpcv ? `$${cpcv}` : '—'}
-        </span>
       </div>
 
       {/* Table */}
