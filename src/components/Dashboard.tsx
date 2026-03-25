@@ -458,6 +458,7 @@ export function Dashboard({ brand }: DashboardProps) {
             data={adstirData}
             loading={adstirLoading}
             accentColor={brand.primaryColor}
+            dateRange={dateRange}
           />
         </div>
       </main>
