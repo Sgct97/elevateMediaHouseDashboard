@@ -446,7 +446,7 @@ export function Dashboard({ brand }: DashboardProps) {
               'Campaign Title': string;
               'Launch Date': string | null;
               'Create Date': string | null;
-              'URL Breakdown'?: Array<{ URLID: number; Clicks: number; 'Unique Clicks': number; URL: string }>;
+              'URL Breakdown'?: Array<{ URLID: number; Type?: string; Clicks: number; 'Unique Clicks': number; URL: string }>;
               [key: string]: unknown;
             }>}
             loading={loading}

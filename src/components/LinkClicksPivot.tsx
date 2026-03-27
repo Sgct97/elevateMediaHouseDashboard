@@ -10,6 +10,7 @@ interface Campaign {
   'Create Date': string | null;
   'URL Breakdown'?: Array<{
     URLID: number;
+    Type?: string;
     Clicks: number;
     'Unique Clicks': number;
     URL: string;
@@ -82,7 +83,7 @@ export function LinkClicksPivot({
       const dropData: Array<{ campaignId: string; clicksByLink: Map<number, number> }> = [];
 
       for (const drop of sorted) {
-        const urls = drop['URL Breakdown'] || [];
+        const urls = (drop['URL Breakdown'] || []).filter(u => !u.Type || u.Type.toLowerCase() !== 'text');
         const clicksByLink = new Map<number, number>();
         for (const url of urls) {
           allLinkIds.add(url.URLID);
