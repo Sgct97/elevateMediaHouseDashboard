@@ -8,9 +8,10 @@ interface AdStirSectionProps {
   loading: boolean;
   accentColor: string;
   dateRange?: { start: string; end: string };
+  searchQuery?: string;
 }
 
-export function AdStirSection({ data, loading, accentColor, dateRange }: AdStirSectionProps) {
+export function AdStirSection({ data, loading, accentColor, dateRange, searchQuery }: AdStirSectionProps) {
   const [selectedAdvertiser, setSelectedAdvertiser] = useState('');
   const [showClicks, setShowClicks] = useState(true);
   const [showVCR, setShowVCR] = useState(true);
@@ -27,6 +28,13 @@ export function AdStirSection({ data, loading, accentColor, dateRange }: AdStirS
 
   const filtered = useMemo(() => {
     let result = data;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(r =>
+        r.advertiser.toLowerCase().includes(q) ||
+        r.campaign.toLowerCase().includes(q)
+      );
+    }
     if (dateRange?.start || dateRange?.end) {
       result = result.filter(r => {
         const recordDate = r.date;
@@ -40,7 +48,7 @@ export function AdStirSection({ data, loading, accentColor, dateRange }: AdStirS
       result = result.filter(r => r.advertiser === selectedAdvertiser);
     }
     return result;
-  }, [data, selectedAdvertiser, dateRange]);
+  }, [data, searchQuery, selectedAdvertiser, dateRange]);
 
   const aggregated = useMemo(() => {
     const byKey = new Map<string, {

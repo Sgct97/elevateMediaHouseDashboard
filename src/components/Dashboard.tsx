@@ -35,6 +35,7 @@ export function Dashboard({ brand }: DashboardProps) {
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Filters
+  const [searchQuery, setSearchQuery] = useState('');
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
   const [selectedDealerships, setSelectedDealerships] = useState<Set<string>>(new Set());
   const [selectedInvoices, setSelectedInvoices] = useState<Set<string>>(new Set());
@@ -163,13 +164,18 @@ export function Dashboard({ brand }: DashboardProps) {
     if (!data?.campaigns) return [];
     
     return data.campaigns.filter(campaign => {
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        const title = (campaign['Campaign Title'] || '').toLowerCase();
+        const invoice = (campaign['Invoice #'] || '').toLowerCase();
+        if (!title.includes(q) && !invoice.includes(q)) return false;
+      }
       if (selectedDealerships.size > 0 && !selectedDealerships.has(campaign['Campaign Title'])) {
         return false;
       }
       if (selectedInvoices.size > 0 && !selectedInvoices.has(campaign['Invoice #'])) {
         return false;
       }
-      // Date range filter
       if (dateRange.start || dateRange.end) {
         const launchStr = campaign['Launch Date'] || campaign['Create Date'];
         if (!launchStr) return false;
@@ -188,7 +194,7 @@ export function Dashboard({ brand }: DashboardProps) {
       }
       return true;
     });
-  }, [data?.campaigns, selectedDealerships, selectedInvoices, dateRange]);
+  }, [data?.campaigns, searchQuery, selectedDealerships, selectedInvoices, dateRange]);
 
   // Remove hidden campaigns from the visible set
   const visibleCampaigns = useMemo(() => {
@@ -290,6 +296,26 @@ export function Dashboard({ brand }: DashboardProps) {
           </div>
           
           {/* Filters */}
+          <div className="flex flex-wrap gap-3 items-center">
+            <div className="relative">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search clients..."
+                className="px-4 py-2 text-sm border-2 bg-white min-w-[180px] focus:outline-none"
+                style={{ borderColor: brand.primaryColor }}
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-[#718096] hover:text-[#2D3748] text-sm"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          </div>
           <Filters
             dateRange={dateRange}
             onDateRangeChange={setDateRange}
@@ -459,6 +485,7 @@ export function Dashboard({ brand }: DashboardProps) {
             loading={adstirLoading}
             accentColor={brand.primaryColor}
             dateRange={dateRange}
+            searchQuery={searchQuery}
           />
         </div>
       </main>
