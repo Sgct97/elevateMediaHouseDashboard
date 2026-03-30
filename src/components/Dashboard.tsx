@@ -212,7 +212,7 @@ export function Dashboard({ brand }: DashboardProps) {
     const totalEmails = campaigns.reduce((sum, c) => sum + parseInt(String(c['Total Emails'] || '0')), 0);
     
     const avgOpenRate = totalEmails > 0 ? (totalOpens / totalEmails) * 100 : 0;
-    const avgClickRate = totalOpens > 0 ? (totalClicks / totalOpens) * 100 : 0;
+    const avgClickRate = totalEmails > 0 ? (totalClicks / totalEmails) * 100 : 0;
 
     return { totalCampaigns, totalOpens, totalClicks, totalEmails, avgOpenRate, avgClickRate };
   }, [visibleCampaigns]);
