@@ -8,8 +8,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Email Campaign Dashboard",
-  description: "Conquest Email Campaign Report Dashboard",
+  title: "Campaign Dashboard",
+  description: "Email & CTV Campaign Dashboard",
 };
 
 export default function RootLayout({

@@ -241,18 +241,33 @@ export function Dashboard({ brand }: DashboardProps) {
 
   // Cascading filter options — dealerships narrow by date, invoices narrow by date + dealership
   const dealerships = useMemo(() => {
-    const unique = new Set(dateFilteredCampaigns.map(c => c['Campaign Title']).filter(Boolean));
+    let pool = dateFilteredCampaigns;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      pool = pool.filter(c =>
+        (c['Campaign Title'] || '').toLowerCase().includes(q) ||
+        (c['Invoice #'] || '').toLowerCase().includes(q)
+      );
+    }
+    const unique = new Set(pool.map(c => c['Campaign Title']).filter(Boolean));
     return Array.from(unique).sort();
-  }, [dateFilteredCampaigns]);
+  }, [dateFilteredCampaigns, searchQuery]);
 
   const invoices = useMemo(() => {
     let pool = dateFilteredCampaigns;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      pool = pool.filter(c =>
+        (c['Campaign Title'] || '').toLowerCase().includes(q) ||
+        (c['Invoice #'] || '').toLowerCase().includes(q)
+      );
+    }
     if (selectedDealerships.size > 0) {
       pool = pool.filter(c => selectedDealerships.has(c['Campaign Title']));
     }
     const unique = new Set(pool.map(c => c['Invoice #']).filter(Boolean));
     return Array.from(unique).sort();
-  }, [dateFilteredCampaigns, selectedDealerships]);
+  }, [dateFilteredCampaigns, searchQuery, selectedDealerships]);
 
   // Auto-clear stale selections when filter options change
   useEffect(() => {
