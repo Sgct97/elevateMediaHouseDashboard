@@ -375,7 +375,7 @@ export function Dashboard({ brand }: DashboardProps) {
       <Header 
         brand={brand} 
         lastUpdated={lastUpdated}
-        onRefresh={() => fetchData(true)}
+        onRefresh={() => { fetchData(true); fetchAdstirData(true); fetchDs360Data(true); }}
         isRefreshing={isRefreshing}
       />
 
