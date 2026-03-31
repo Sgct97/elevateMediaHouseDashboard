@@ -7,9 +7,11 @@ import { DataTable } from './DataTable';
 import { Filters } from './Filters';
 import { LinkClicksPivot } from './LinkClicksPivot';
 import { AdStirSection } from './AdStirSection';
+import { Datasys360Section } from './Datasys360Section';
 import { BrandConfig } from '@/lib/brands';
 import { CampaignStats } from '@/lib/api';
 import type { AdStirRecord } from '@/app/api/adstir/route';
+import type { Datasys360Campaign } from '@/app/api/datasys360/route';
 
 interface DashboardProps {
   brand: BrandConfig;
@@ -167,6 +169,10 @@ export function Dashboard({ brand }: DashboardProps) {
   const [adstirData, setAdstirData] = useState<AdStirRecord[]>([]);
   const [adstirLoading, setAdstirLoading] = useState(true);
 
+  // Datasys360 social campaign data
+  const [ds360Data, setDs360Data] = useState<Datasys360Campaign[]>([]);
+  const [ds360Loading, setDs360Loading] = useState(true);
+
   const fetchData = useCallback(async (refresh = false) => {
     try {
       setIsRefreshing(true);
@@ -207,16 +213,33 @@ export function Dashboard({ brand }: DashboardProps) {
     }
   }, []);
 
+  const fetchDs360Data = useCallback(async (refresh = false) => {
+    try {
+      setDs360Loading(true);
+      const url = refresh ? '/api/datasys360?refresh=true' : '/api/datasys360';
+      const response = await fetch(url);
+      if (response.ok) {
+        const result = await response.json();
+        setDs360Data(result.data || []);
+      }
+    } catch {
+      // fail silently
+    } finally {
+      setDs360Loading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchData();
     fetchAdstirData();
-    // Auto-refresh every 15 minutes (checks for new campaigns + new AdStir data)
+    fetchDs360Data();
     const interval = setInterval(() => {
       fetchData(true);
       fetchAdstirData(true);
+      fetchDs360Data(true);
     }, 15 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [fetchData, fetchAdstirData]);
+  }, [fetchData, fetchAdstirData, fetchDs360Data]);
 
   // Filter the data
   const filteredCampaigns = useMemo(() => {
@@ -589,6 +612,13 @@ export function Dashboard({ brand }: DashboardProps) {
             loading={adstirLoading}
             accentColor={brand.primaryColor}
             dateRange={dateRange}
+            searchQuery={searchQuery}
+          />
+
+          <Datasys360Section
+            data={ds360Data}
+            loading={ds360Loading}
+            accentColor={brand.primaryColor}
             searchQuery={searchQuery}
           />
         </div>
