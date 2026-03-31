@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Header } from './Header';
 import { KPICard } from './KPICard';
 import { DataTable } from './DataTable';
@@ -39,6 +39,65 @@ export function Dashboard({ brand }: DashboardProps) {
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
   const [selectedDealerships, setSelectedDealerships] = useState<Set<string>>(new Set());
   const [selectedInvoices, setSelectedInvoices] = useState<Set<string>>(new Set());
+
+  // PDF export
+  const reportRef = useRef<HTMLDivElement>(null);
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleDownloadPDF = useCallback(async () => {
+    if (!reportRef.current) return;
+    setIsExporting(true);
+    try {
+      const html2canvas = (await import('html2canvas-pro')).default;
+      const { jsPDF } = await import('jspdf');
+
+      const el = reportRef.current;
+
+      const pdfHeader = el.querySelector('.pdf-header') as HTMLElement | null;
+      if (pdfHeader) pdfHeader.style.display = 'block';
+
+      await new Promise(r => setTimeout(r, 100));
+
+      const canvas = await html2canvas(el, {
+        scale: 2,
+        useCORS: true,
+        backgroundColor: '#FAFBFC',
+        windowWidth: 1400,
+      });
+
+      if (pdfHeader) pdfHeader.style.display = '';
+
+      const imgWidth = 277;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      const pdf = new jsPDF('l', 'mm', 'a4');
+      const pageHeight = pdf.internal.pageSize.getHeight();
+
+      let position = 0;
+      let heightLeft = imgHeight;
+      const imgData = canvas.toDataURL('image/png');
+
+      pdf.addImage(imgData, 'PNG', 10, 10, imgWidth, imgHeight);
+      heightLeft -= (pageHeight - 20);
+
+      while (heightLeft > 0) {
+        position -= (pageHeight - 10);
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 10, position, imgWidth, imgHeight);
+        heightLeft -= (pageHeight - 10);
+      }
+
+      const dateStr = new Date().toISOString().split('T')[0];
+      const filters = [];
+      if (dateRange.start) filters.push(dateRange.start);
+      if (dateRange.end) filters.push(dateRange.end);
+      const suffix = filters.length ? `_${filters.join('_to_')}` : '';
+      pdf.save(`Campaign_Report${suffix}_${dateStr}.pdf`);
+    } catch (err) {
+      console.error('PDF export failed:', err);
+    } finally {
+      setIsExporting(false);
+    }
+  }, [dateRange, searchQuery]);
 
   // Hidden drops (by Campaign ID) — server-persisted, shared across all users
   const [hiddenCampaignIds, setHiddenCampaignIds] = useState<Set<string>>(new Set());
@@ -310,8 +369,16 @@ export function Dashboard({ brand }: DashboardProps) {
             />
           </div>
           
-          {/* Filters */}
+          {/* Filters + Download */}
           <div className="flex flex-wrap gap-3 items-center">
+            <button
+              onClick={handleDownloadPDF}
+              disabled={isExporting || loading}
+              className="px-4 py-2 text-sm font-medium text-white disabled:opacity-50 transition-opacity"
+              style={{ backgroundColor: brand.primaryColor }}
+            >
+              {isExporting ? 'Generating PDF...' : 'Download PDF'}
+            </button>
             <div className="relative">
               <input
                 type="text"
@@ -342,6 +409,28 @@ export function Dashboard({ brand }: DashboardProps) {
             onInvoicesChange={setSelectedInvoices}
             accentColor={brand.primaryColor}
           />
+        </div>
+
+        {/* PDF capture area */}
+        <div ref={reportRef} className="bg-[#FAFBFC]">
+
+        {/* PDF-only header with logo — hidden on screen, visible in PDF */}
+        <div className="pdf-header hidden mb-6">
+          <div className="flex items-center justify-between pb-4 border-b-2" style={{ borderColor: brand.primaryColor }}>
+            <img src={brand.logo} alt={brand.name} className="h-14 object-contain" />
+            <div className="text-right">
+              <h2 className="text-xl font-light text-[#2D3748]">Conquest Email Campaign Report</h2>
+              <p className="text-xs text-[#718096] mt-1">
+                {dateRange.start && dateRange.end
+                  ? `${dateRange.start} — ${dateRange.end}`
+                  : dateRange.start || dateRange.end || 'All dates'}
+                {searchQuery && ` · Search: "${searchQuery}"`}
+              </p>
+              <p className="text-[10px] text-[#A0AEC0] mt-0.5">
+                Generated {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+              </p>
+            </div>
+          </div>
         </div>
 
         {/* Hidden drops indicator */}
@@ -503,6 +592,7 @@ export function Dashboard({ brand }: DashboardProps) {
             searchQuery={searchQuery}
           />
         </div>
+        </div>{/* end PDF capture area */}
       </main>
     </div>
   );
