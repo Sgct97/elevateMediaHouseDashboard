@@ -13,17 +13,29 @@ interface Datasys360SectionProps {
 export function Datasys360Section({ data, loading, accentColor, searchQuery }: Datasys360SectionProps) {
   const [sortKey, setSortKey] = useState<string>('totalImpressions');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [selectedAdvertiser, setSelectedAdvertiser] = useState('');
   const [page, setPage] = useState(0);
   const pageSize = 10;
 
+  const advertisers = useMemo(() => {
+    const unique = new Set(data.map(r => r.advertiserName).filter(Boolean));
+    return Array.from(unique).sort();
+  }, [data]);
+
   const filtered = useMemo(() => {
-    if (!searchQuery) return data;
-    const q = searchQuery.toLowerCase();
-    return data.filter(r =>
-      r.advertiserName.toLowerCase().includes(q) ||
-      r.campaignName.toLowerCase().includes(q)
-    );
-  }, [data, searchQuery]);
+    let result = data;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(r =>
+        r.advertiserName.toLowerCase().includes(q) ||
+        r.campaignName.toLowerCase().includes(q)
+      );
+    }
+    if (selectedAdvertiser) {
+      result = result.filter(r => r.advertiserName === selectedAdvertiser);
+    }
+    return result;
+  }, [data, searchQuery, selectedAdvertiser]);
 
   const sorted = useMemo(() => {
     const arr = [...filtered];
@@ -112,10 +124,22 @@ export function Datasys360Section({ data, loading, accentColor, searchQuery }: D
         <h2 className="text-sm font-semibold text-[#2D3748] uppercase tracking-wide">
           Social Campaign Performance
         </h2>
-        <div className="flex items-center gap-4 text-xs text-[#718096]">
-          <span>Total Impressions: <strong className="text-[#2D3748]">{totals.impressions.toLocaleString()}</strong></span>
-          <span>Frequency: <strong className="text-[#2D3748]">{totals.frequency}</strong></span>
-          <span>Link Clicks: <strong className="text-[#2D3748]">{totals.clicks.toLocaleString()}</strong></span>
+        <div className="flex items-center gap-4 flex-wrap">
+          <select
+            value={selectedAdvertiser}
+            onChange={(e) => { setSelectedAdvertiser(e.target.value); setPage(0); }}
+            className="text-xs border border-[#E2E8F0] px-2 py-1.5 text-[#4A5568] bg-white min-w-[180px]"
+          >
+            <option value="">All Advertisers</option>
+            {advertisers.map(a => (
+              <option key={a} value={a}>{a}</option>
+            ))}
+          </select>
+          <div className="flex items-center gap-4 text-xs text-[#718096]">
+            <span>Total Impressions: <strong className="text-[#2D3748]">{totals.impressions.toLocaleString()}</strong></span>
+            <span>Frequency: <strong className="text-[#2D3748]">{totals.frequency}</strong></span>
+            <span>Link Clicks: <strong className="text-[#2D3748]">{totals.clicks.toLocaleString()}</strong></span>
+          </div>
         </div>
       </div>
 

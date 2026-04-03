@@ -9,11 +9,13 @@ import { LinkClicksPivot } from './LinkClicksPivot';
 import { AdStirSection } from './AdStirSection';
 import { Datasys360Section } from './Datasys360Section';
 import { GroundTruthSection } from './GroundTruthSection';
+import { GroundTruthPacing } from './GroundTruthPacing';
 import { BrandConfig } from '@/lib/brands';
 import { CampaignStats } from '@/lib/api';
 import type { AdStirRecord } from '@/app/api/adstir/route';
 import type { Datasys360Campaign } from '@/app/api/datasys360/route';
 import type { GroundTruthCampaign } from '@/app/api/groundtruth/route';
+import type { PacingCampaign } from '@/app/api/groundtruth/pacing/route';
 
 interface DashboardProps {
   brand: BrandConfig;
@@ -179,6 +181,10 @@ export function Dashboard({ brand }: DashboardProps) {
   const [gtData, setGtData] = useState<GroundTruthCampaign[]>([]);
   const [gtLoading, setGtLoading] = useState(true);
 
+  // GroundTruth pacing data
+  const [gtPacingData, setGtPacingData] = useState<PacingCampaign[]>([]);
+  const [gtPacingLoading, setGtPacingLoading] = useState(true);
+
   const fetchData = useCallback(async (refresh = false) => {
     try {
       setIsRefreshing(true);
@@ -251,19 +257,37 @@ export function Dashboard({ brand }: DashboardProps) {
     }
   }, []);
 
+  const fetchGtPacingData = useCallback(async (refresh = false) => {
+    try {
+      setGtPacingLoading(true);
+      const url = refresh ? '/api/groundtruth/pacing?refresh=true' : '/api/groundtruth/pacing';
+      const response = await fetch(url);
+      if (response.ok) {
+        const result = await response.json();
+        setGtPacingData(result.data || []);
+      }
+    } catch {
+      // fail silently
+    } finally {
+      setGtPacingLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchData();
     fetchAdstirData();
     fetchDs360Data();
     fetchGtData();
+    fetchGtPacingData();
     const interval = setInterval(() => {
       fetchData(true);
       fetchAdstirData(true);
       fetchDs360Data(true);
       fetchGtData(true);
+      fetchGtPacingData(true);
     }, 15 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [fetchData, fetchAdstirData, fetchDs360Data, fetchGtData]);
+  }, [fetchData, fetchAdstirData, fetchDs360Data, fetchGtData, fetchGtPacingData]);
 
   // Filter the data
   const filteredCampaigns = useMemo(() => {
@@ -399,7 +423,7 @@ export function Dashboard({ brand }: DashboardProps) {
       <Header 
         brand={brand} 
         lastUpdated={lastUpdated}
-        onRefresh={() => { fetchData(true); fetchAdstirData(true); fetchDs360Data(true); fetchGtData(true); }}
+        onRefresh={() => { fetchData(true); fetchAdstirData(true); fetchDs360Data(true); fetchGtData(true); fetchGtPacingData(true); }}
         isRefreshing={isRefreshing}
       />
 
@@ -649,6 +673,13 @@ export function Dashboard({ brand }: DashboardProps) {
           <GroundTruthSection
             data={gtData}
             loading={gtLoading}
+            accentColor={brand.primaryColor}
+            searchQuery={searchQuery}
+          />
+
+          <GroundTruthPacing
+            data={gtPacingData}
+            loading={gtPacingLoading}
             accentColor={brand.primaryColor}
             searchQuery={searchQuery}
           />

@@ -1,21 +1,33 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import type { GroundTruthCampaign } from '@/app/api/groundtruth/route';
+import type { PacingCampaign } from '@/app/api/groundtruth/pacing/route';
 
-interface GroundTruthSectionProps {
-  data: GroundTruthCampaign[];
+interface GroundTruthPacingProps {
+  data: PacingCampaign[];
   loading: boolean;
   accentColor: string;
   searchQuery?: string;
 }
 
-export function GroundTruthSection({ data, loading, accentColor, searchQuery }: GroundTruthSectionProps) {
-  const [sortKey, setSortKey] = useState<string>('impressions');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+function pacingColor(pacing: number): string {
+  if (pacing >= 95) return '#38A169';
+  if (pacing >= 80) return '#EAB308';
+  return '#E53E3E';
+}
+
+function statusColor(status: string): string {
+  if (status === 'Active') return '#38A169';
+  if (status === 'Expired') return '#E53E3E';
+  return '#718096';
+}
+
+export function GroundTruthPacing({ data, loading, accentColor, searchQuery }: GroundTruthPacingProps) {
+  const [sortKey, setSortKey] = useState<string>('campaignName');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [selectedCampaign, setSelectedCampaign] = useState('');
   const [page, setPage] = useState(0);
-  const pageSize = 10;
+  const pageSize = 15;
 
   const campaignNames = useMemo(() => {
     const unique = new Set(data.map(r => r.campaignName).filter(Boolean));
@@ -37,8 +49,8 @@ export function GroundTruthSection({ data, loading, accentColor, searchQuery }: 
   const sorted = useMemo(() => {
     const arr = [...filtered];
     arr.sort((a, b) => {
-      const aVal = a[sortKey as keyof GroundTruthCampaign];
-      const bVal = b[sortKey as keyof GroundTruthCampaign];
+      const aVal = a[sortKey as keyof PacingCampaign];
+      const bVal = b[sortKey as keyof PacingCampaign];
       if (typeof aVal === 'number' && typeof bVal === 'number') {
         return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
       }
@@ -53,25 +65,12 @@ export function GroundTruthSection({ data, loading, accentColor, searchQuery }: 
   const clampedPage = Math.min(page, totalPages - 1);
   const paged = sorted.slice(clampedPage * pageSize, (clampedPage + 1) * pageSize);
 
-  const totals = useMemo(() => {
-    const t = { impressions: 0, reach: 0, clicks: 0 };
-    for (const r of filtered) {
-      t.impressions += r.impressions;
-      t.reach += r.reach;
-      t.clicks += r.clicks;
-    }
-    return {
-      ...t,
-      ctr: t.impressions > 0 ? +((t.clicks / t.impressions) * 100).toFixed(2) : 0,
-    };
-  }, [filtered]);
-
   const handleSort = (key: string) => {
     if (sortKey === key) {
       setSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
     } else {
       setSortKey(key);
-      setSortDir('desc');
+      setSortDir(key === 'campaignName' ? 'asc' : 'desc');
     }
   };
 
@@ -84,9 +83,9 @@ export function GroundTruthSection({ data, loading, accentColor, searchQuery }: 
     return (
       <div className="bg-white border border-[#E2E8F0]">
         <div className="px-4 py-3 border-b border-[#E2E8F0]">
-          <h2 className="text-sm font-semibold text-[#2D3748] uppercase tracking-wide">Geofence Campaign Performance</h2>
+          <h2 className="text-sm font-semibold text-[#2D3748] uppercase tracking-wide">Geofence Pacing Report</h2>
         </div>
-        <div className="p-8 text-center text-[#718096] text-sm">Loading geofence data...</div>
+        <div className="p-8 text-center text-[#718096] text-sm">Loading pacing data...</div>
       </div>
     );
   }
@@ -95,25 +94,20 @@ export function GroundTruthSection({ data, loading, accentColor, searchQuery }: 
     return (
       <div className="bg-white border border-[#E2E8F0]">
         <div className="px-4 py-3 border-b border-[#E2E8F0]">
-          <h2 className="text-sm font-semibold text-[#2D3748] uppercase tracking-wide">Geofence Campaign Performance</h2>
+          <h2 className="text-sm font-semibold text-[#2D3748] uppercase tracking-wide">Geofence Pacing Report</h2>
         </div>
-        <div className="p-8 text-center text-[#718096] text-sm">No geofence data available.</div>
+        <div className="p-8 text-center text-[#718096] text-sm">No pacing data available.</div>
       </div>
     );
   }
 
-  const columns: { key: string; label: string; align: 'left' | 'right'; render: (r: GroundTruthCampaign) => string }[] = [
-    { key: 'campaignName', label: 'Campaign', align: 'left', render: r => r.campaignName },
-    { key: 'impressions', label: 'Impressions', align: 'right', render: r => r.impressions.toLocaleString() },
-    { key: 'reach', label: 'Reach', align: 'right', render: r => r.reach.toLocaleString() },
-    { key: 'clicks', label: 'Clicks', align: 'right', render: r => r.clicks.toLocaleString() },
-    { key: 'ctr', label: 'CTR', align: 'right', render: r => `${r.ctr.toFixed(2)}%` },
-  ];
+  const activeCt = filtered.filter(r => r.status === 'Active').length;
+  const expiredCt = filtered.filter(r => r.status === 'Expired').length;
 
   return (
     <div className="bg-white border border-[#E2E8F0]">
       <div className="px-4 py-3 border-b border-[#E2E8F0] flex items-center justify-between flex-wrap gap-3">
-        <h2 className="text-sm font-semibold text-[#2D3748] uppercase tracking-wide">Geofence Campaign Performance</h2>
+        <h2 className="text-sm font-semibold text-[#2D3748] uppercase tracking-wide">Geofence Pacing Report</h2>
         <div className="flex items-center gap-4 flex-wrap">
           <select
             value={selectedCampaign}
@@ -126,10 +120,9 @@ export function GroundTruthSection({ data, loading, accentColor, searchQuery }: 
             ))}
           </select>
           <div className="flex items-center gap-4 text-xs text-[#718096]">
-            <span>Impressions: <strong className="text-[#2D3748]">{totals.impressions.toLocaleString()}</strong></span>
-            <span>Reach: <strong className="text-[#2D3748]">{totals.reach.toLocaleString()}</strong></span>
-            <span>Clicks: <strong className="text-[#2D3748]">{totals.clicks.toLocaleString()}</strong></span>
-            <span>CTR: <strong className="text-[#2D3748]">{totals.ctr}%</strong></span>
+            <span>Active: <strong className="text-[#38A169]">{activeCt}</strong></span>
+            <span>Expired: <strong className="text-[#E53E3E]">{expiredCt}</strong></span>
+            <span>Total: <strong className="text-[#2D3748]">{filtered.length}</strong></span>
           </div>
         </div>
       </div>
@@ -138,15 +131,24 @@ export function GroundTruthSection({ data, loading, accentColor, searchQuery }: 
         <table className="text-sm w-full">
           <thead>
             <tr className="bg-[#F8FAFB] border-b border-[#E2E8F0]">
-              {columns.map(col => (
-                <th
-                  key={col.key}
-                  className={`px-4 py-2.5 text-${col.align} text-[10px] uppercase tracking-wider font-semibold text-[#A0AEC0] cursor-pointer whitespace-nowrap hover:text-[#4A5568]`}
-                  onClick={() => handleSort(col.key)}
-                >
-                  {col.label}{sortIndicator(col.key)}
-                </th>
-              ))}
+              <th
+                className="px-4 py-2.5 text-left text-[10px] uppercase tracking-wider font-semibold text-[#A0AEC0] cursor-pointer whitespace-nowrap hover:text-[#4A5568]"
+                onClick={() => handleSort('campaignName')}
+              >
+                Campaign Name{sortIndicator('campaignName')}
+              </th>
+              <th
+                className="px-4 py-2.5 text-left text-[10px] uppercase tracking-wider font-semibold text-[#A0AEC0] cursor-pointer whitespace-nowrap hover:text-[#4A5568]"
+                onClick={() => handleSort('status')}
+              >
+                Status{sortIndicator('status')}
+              </th>
+              <th
+                className="px-4 py-2.5 text-right text-[10px] uppercase tracking-wider font-semibold text-[#A0AEC0] cursor-pointer whitespace-nowrap hover:text-[#4A5568]"
+                onClick={() => handleSort('pacing')}
+              >
+                Pacing{sortIndicator('pacing')}
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -155,19 +157,22 @@ export function GroundTruthSection({ data, loading, accentColor, searchQuery }: 
                 key={row.campaignId}
                 className={`border-b border-[#F0F3F5] ${i % 2 === 0 ? 'bg-white' : 'bg-[#FAFBFC]'} hover:bg-[#F0F4FF] transition-colors`}
               >
-                {columns.map(col => (
-                  <td
-                    key={col.key}
-                    className={`px-4 py-2.5 text-[#4A5568] ${col.align === 'right' ? 'text-right' : ''} whitespace-nowrap`}
-                  >
-                    {col.render(row)}
-                  </td>
-                ))}
+                <td className="px-4 py-3 text-[#4A5568]">{row.campaignName}</td>
+                <td className="px-4 py-3 whitespace-nowrap">
+                  <span className="text-sm font-semibold" style={{ color: statusColor(row.status) }}>
+                    {row.status}
+                  </span>
+                </td>
+                <td className="px-4 py-3 text-right whitespace-nowrap">
+                  <span className="text-sm font-semibold" style={{ color: pacingColor(row.pacing) }}>
+                    {row.pacing.toFixed(2)}%
+                  </span>
+                </td>
               </tr>
             ))}
             {paged.length === 0 && (
               <tr>
-                <td colSpan={columns.length} className="px-4 py-8 text-center text-[#A0AEC0]">
+                <td colSpan={3} className="px-4 py-8 text-center text-[#A0AEC0]">
                   No data matches the selected filters.
                 </td>
               </tr>
