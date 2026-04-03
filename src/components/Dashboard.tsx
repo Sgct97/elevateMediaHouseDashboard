@@ -8,10 +8,12 @@ import { Filters } from './Filters';
 import { LinkClicksPivot } from './LinkClicksPivot';
 import { AdStirSection } from './AdStirSection';
 import { Datasys360Section } from './Datasys360Section';
+import { GroundTruthSection } from './GroundTruthSection';
 import { BrandConfig } from '@/lib/brands';
 import { CampaignStats } from '@/lib/api';
 import type { AdStirRecord } from '@/app/api/adstir/route';
 import type { Datasys360Campaign } from '@/app/api/datasys360/route';
+import type { GroundTruthCampaign } from '@/app/api/groundtruth/route';
 
 interface DashboardProps {
   brand: BrandConfig;
@@ -173,6 +175,10 @@ export function Dashboard({ brand }: DashboardProps) {
   const [ds360Data, setDs360Data] = useState<Datasys360Campaign[]>([]);
   const [ds360Loading, setDs360Loading] = useState(true);
 
+  // GroundTruth geofence campaign data
+  const [gtData, setGtData] = useState<GroundTruthCampaign[]>([]);
+  const [gtLoading, setGtLoading] = useState(true);
+
   const fetchData = useCallback(async (refresh = false) => {
     try {
       setIsRefreshing(true);
@@ -229,17 +235,35 @@ export function Dashboard({ brand }: DashboardProps) {
     }
   }, []);
 
+  const fetchGtData = useCallback(async (refresh = false) => {
+    try {
+      setGtLoading(true);
+      const url = refresh ? '/api/groundtruth?refresh=true' : '/api/groundtruth';
+      const response = await fetch(url);
+      if (response.ok) {
+        const result = await response.json();
+        setGtData(result.data || []);
+      }
+    } catch {
+      // fail silently
+    } finally {
+      setGtLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchData();
     fetchAdstirData();
     fetchDs360Data();
+    fetchGtData();
     const interval = setInterval(() => {
       fetchData(true);
       fetchAdstirData(true);
       fetchDs360Data(true);
+      fetchGtData(true);
     }, 15 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [fetchData, fetchAdstirData, fetchDs360Data]);
+  }, [fetchData, fetchAdstirData, fetchDs360Data, fetchGtData]);
 
   // Filter the data
   const filteredCampaigns = useMemo(() => {
@@ -375,7 +399,7 @@ export function Dashboard({ brand }: DashboardProps) {
       <Header 
         brand={brand} 
         lastUpdated={lastUpdated}
-        onRefresh={() => { fetchData(true); fetchAdstirData(true); fetchDs360Data(true); }}
+        onRefresh={() => { fetchData(true); fetchAdstirData(true); fetchDs360Data(true); fetchGtData(true); }}
         isRefreshing={isRefreshing}
       />
 
@@ -618,6 +642,13 @@ export function Dashboard({ brand }: DashboardProps) {
           <Datasys360Section
             data={ds360Data}
             loading={ds360Loading}
+            accentColor={brand.primaryColor}
+            searchQuery={searchQuery}
+          />
+
+          <GroundTruthSection
+            data={gtData}
+            loading={gtLoading}
             accentColor={brand.primaryColor}
             searchQuery={searchQuery}
           />
