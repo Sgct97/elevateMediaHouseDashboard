@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Image from 'next/image';
 import { Dashboard } from './Dashboard';
 import { CTVDashboard } from './CTVDashboard';
+import { PacingDashboard } from './PacingDashboard';
 import { BrandConfig } from '@/lib/brands';
 
 interface AppShellProps {
@@ -13,6 +14,7 @@ interface AppShellProps {
 const TABS = [
   { id: 'email', label: 'Email Campaigns' },
   { id: 'ctv', label: 'CTV Dashboard' },
+  { id: 'pacing', label: 'Pacing Report' },
 ] as const;
 
 type TabId = typeof TABS[number]['id'];
@@ -62,6 +64,7 @@ export function AppShell({ brand }: AppShellProps) {
       <main className="flex-1 min-w-0">
         {activeTab === 'email' && <Dashboard brand={brand} />}
         {activeTab === 'ctv' && <CTVDashboard brand={brand} />}
+        {activeTab === 'pacing' && <PacingDashboard brand={brand} />}
       </main>
     </div>
   );

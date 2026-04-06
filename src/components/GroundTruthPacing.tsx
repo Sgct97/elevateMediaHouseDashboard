@@ -26,6 +26,7 @@ export function GroundTruthPacing({ data, loading, accentColor, searchQuery }: G
   const [sortKey, setSortKey] = useState<string>('campaignName');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [selectedCampaign, setSelectedCampaign] = useState('');
+  const [hideExpired, setHideExpired] = useState(false);
   const [page, setPage] = useState(0);
   const pageSize = 15;
 
@@ -43,8 +44,11 @@ export function GroundTruthPacing({ data, loading, accentColor, searchQuery }: G
     if (selectedCampaign) {
       result = result.filter(r => r.campaignName === selectedCampaign);
     }
+    if (hideExpired) {
+      result = result.filter(r => r.status !== 'Expired');
+    }
     return result;
-  }, [data, searchQuery, selectedCampaign]);
+  }, [data, searchQuery, selectedCampaign, hideExpired]);
 
   const sorted = useMemo(() => {
     const arr = [...filtered];
@@ -119,9 +123,19 @@ export function GroundTruthPacing({ data, loading, accentColor, searchQuery }: G
               <option key={c} value={c}>{c}</option>
             ))}
           </select>
+          <label className="flex items-center gap-1.5 text-xs text-[#718096] cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={hideExpired}
+              onChange={(e) => { setHideExpired(e.target.checked); setPage(0); }}
+              className="accent-current"
+              style={{ accentColor }}
+            />
+            Hide Expired
+          </label>
           <div className="flex items-center gap-4 text-xs text-[#718096]">
             <span>Active: <strong className="text-[#38A169]">{activeCt}</strong></span>
-            <span>Expired: <strong className="text-[#E53E3E]">{expiredCt}</strong></span>
+            {!hideExpired && <span>Expired: <strong className="text-[#E53E3E]">{expiredCt}</strong></span>}
             <span>Total: <strong className="text-[#2D3748]">{filtered.length}</strong></span>
           </div>
         </div>
