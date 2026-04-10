@@ -315,14 +315,14 @@ export function Dashboard({ brand }: DashboardProps) {
     const campaigns = visibleCampaigns;
     
     const totalCampaigns = campaigns.length;
-    const totalUniqueOpens = campaigns.reduce((sum, c) => sum + (c['Unique Opens'] || 0), 0);
+    const totalOpens = campaigns.reduce((sum, c) => sum + (c['Total Opens'] || 0), 0);
     const totalClicks = campaigns.reduce((sum, c) => sum + (c['Total Clicks'] || 0), 0);
     const totalEmails = campaigns.reduce((sum, c) => sum + parseInt(String(c['Total Emails'] || '0')), 0);
     
-    const avgUniqueOpenRate = totalEmails > 0 ? (totalUniqueOpens / totalEmails) * 100 : 0;
+    const avgOpenRate = totalEmails > 0 ? (totalOpens / totalEmails) * 100 : 0;
     const avgClickRate = totalEmails > 0 ? (totalClicks / totalEmails) * 100 : 0;
 
-    return { totalCampaigns, totalUniqueOpens, totalClicks, totalEmails, avgUniqueOpenRate, avgClickRate };
+    return { totalCampaigns, totalOpens, totalClicks, totalEmails, avgOpenRate, avgClickRate };
   }, [visibleCampaigns]);
 
   // Date-filtered campaigns (before dealership/invoice filters) — used for cascading dropdowns
@@ -544,8 +544,8 @@ export function Dashboard({ brand }: DashboardProps) {
             loading={loading}
           />
           <KPICard
-            title="Sum Total Unique Opens"
-            value={aggregates.totalUniqueOpens}
+            title="Sum Total Opens"
+            value={aggregates.totalOpens}
             loading={loading}
           />
           <KPICard
@@ -554,8 +554,8 @@ export function Dashboard({ brand }: DashboardProps) {
             loading={loading}
           />
           <KPICard
-            title="Average Unique Open Rate"
-            value={aggregates.avgUniqueOpenRate}
+            title="Average Open Rate"
+            value={aggregates.avgOpenRate}
             loading={loading}
             format="percentage"
           />
@@ -592,14 +592,14 @@ export function Dashboard({ brand }: DashboardProps) {
                 }
               },
               { 
-                key: 'Unique Opens' as keyof CampaignStats, 
-                header: 'Unique Opens',
+                key: 'Total Opens' as keyof CampaignStats, 
+                header: 'Total Opens',
                 align: 'right',
                 render: (value) => (value as number)?.toLocaleString() ?? '—'
               },
               { 
-                key: 'Unique Opens Rate' as keyof CampaignStats, 
-                header: 'Unique Open Rate',
+                key: 'Opens Rate' as keyof CampaignStats, 
+                header: 'Open Rate',
                 align: 'right',
                 render: (value) => value ? `${(parseFloat(value as string) * 100).toFixed(2)}%` : '—'
               },
