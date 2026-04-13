@@ -69,11 +69,11 @@ function parseRows(rows: unknown[][]): { records: AdStirPacingRecord[]; reportPe
     if (!Array.isArray(row) || row.length < 10 || !row[0]) continue;
 
     records.push({
-      date: parseDate(row[0]),
+      date: parseDate(row[0] as string | number | null),
       client: String(row[1] || ''),
       product: String(row[2] || ''),
-      flightStart: parseDate(row[3]),
-      flightEnd: parseDate(row[4]),
+      flightStart: parseDate(row[3] as string | number | null),
+      flightEnd: parseDate(row[4] as string | number | null),
       cpm: typeof row[6] === 'number' ? row[6] : parseFloat(String(row[6]).replace(/[$,\s]/g, '')) || 0,
       deliveredImpressions: typeof row[7] === 'number' ? row[7] : parseInt(String(row[7]).replace(/[\s,]/g, '')) || 0,
       deliveryPct: typeof row[8] === 'number' ? +(row[8] * 100).toFixed(2) : parseFloat(String(row[8]).replace('%', '')) || 0,
