@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, type ReactNode } from 'react';
 import type { AdStirPacingRecord } from '@/app/api/adstir-pacing/route';
 
 interface AdStirPacingProps {
@@ -117,7 +117,7 @@ export function AdStirPacing({ data, loading, accentColor, reportDate, searchQue
     );
   }
 
-  const columns: { key: string; label: string; align: 'left' | 'right'; render: (r: AdStirPacingRecord) => string | JSX.Element }[] = [
+  const columns: { key: string; label: string; align: 'left' | 'right'; render: (r: AdStirPacingRecord) => string | ReactNode }[] = [
     { key: 'client', label: 'Client', align: 'left', render: r => r.client },
     { key: 'product', label: 'Product', align: 'left', render: r => r.product },
     { key: 'flightStart', label: 'Flight Start', align: 'left', render: r => r.flightStart },
