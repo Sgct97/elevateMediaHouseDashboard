@@ -38,6 +38,9 @@ export function Dashboard({ brand }: DashboardProps) {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  // Opens metric toggle
+  const [showUniqueOpens, setShowUniqueOpens] = useState(true);
+
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
   const [dateRange, setDateRange] = useState({ start: '', end: '' });
@@ -315,7 +318,8 @@ export function Dashboard({ brand }: DashboardProps) {
     const campaigns = visibleCampaigns;
     
     const totalCampaigns = campaigns.length;
-    const totalOpens = campaigns.reduce((sum, c) => sum + (c['Total Opens'] || 0), 0);
+    const opensField = showUniqueOpens ? 'Unique Opens' : 'Total Opens';
+    const totalOpens = campaigns.reduce((sum, c) => sum + ((c as unknown as Record<string, unknown>)[opensField] as number || 0), 0);
     const totalClicks = campaigns.reduce((sum, c) => sum + (c['Total Clicks'] || 0), 0);
     const totalEmails = campaigns.reduce((sum, c) => sum + parseInt(String(c['Total Emails'] || '0')), 0);
     
@@ -323,7 +327,7 @@ export function Dashboard({ brand }: DashboardProps) {
     const avgClickRate = totalEmails > 0 ? (totalClicks / totalEmails) * 100 : 0;
 
     return { totalCampaigns, totalOpens, totalClicks, totalEmails, avgOpenRate, avgClickRate };
-  }, [visibleCampaigns]);
+  }, [visibleCampaigns, showUniqueOpens]);
 
   // Date-filtered campaigns (before dealership/invoice filters) — used for cascading dropdowns
   const dateFilteredCampaigns = useMemo(() => {
@@ -531,6 +535,20 @@ export function Dashboard({ brand }: DashboardProps) {
           </div>
         )}
 
+        {/* Opens toggle */}
+        <div className="mb-4 flex items-center gap-2">
+          <label className="flex items-center gap-1.5 text-xs text-[#718096] cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={showUniqueOpens}
+              onChange={(e) => setShowUniqueOpens(e.target.checked)}
+              className="accent-current"
+              style={{ accentColor: brand.primaryColor }}
+            />
+            Show Unique Opens
+          </label>
+        </div>
+
         {/* KPI Cards */}
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-px bg-[#E2E8F0] mb-8">
           <KPICard
@@ -544,7 +562,7 @@ export function Dashboard({ brand }: DashboardProps) {
             loading={loading}
           />
           <KPICard
-            title="Sum Total Opens"
+            title={showUniqueOpens ? "Sum Total Unique Opens" : "Sum Total Opens"}
             value={aggregates.totalOpens}
             loading={loading}
           />
@@ -554,7 +572,7 @@ export function Dashboard({ brand }: DashboardProps) {
             loading={loading}
           />
           <KPICard
-            title="Average Open Rate"
+            title={showUniqueOpens ? "Average Unique Open Rate" : "Average Open Rate"}
             value={aggregates.avgOpenRate}
             loading={loading}
             format="percentage"
@@ -592,14 +610,14 @@ export function Dashboard({ brand }: DashboardProps) {
                 }
               },
               { 
-                key: 'Total Opens' as keyof CampaignStats, 
-                header: 'Total Opens',
+                key: (showUniqueOpens ? 'Unique Opens' : 'Total Opens') as keyof CampaignStats, 
+                header: showUniqueOpens ? 'Unique Opens' : 'Total Opens',
                 align: 'right',
                 render: (value) => (value as number)?.toLocaleString() ?? '—'
               },
               { 
-                key: 'Opens Rate' as keyof CampaignStats, 
-                header: 'Open Rate',
+                key: (showUniqueOpens ? 'Unique Opens Rate' : 'Opens Rate') as keyof CampaignStats, 
+                header: showUniqueOpens ? 'Unique Open Rate' : 'Open Rate',
                 align: 'right',
                 render: (value) => value ? `${(parseFloat(value as string) * 100).toFixed(2)}%` : '—'
               },

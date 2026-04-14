@@ -150,12 +150,15 @@ export async function GET(request: Request) {
         (c: { 'Campaign ID': number }) => String(c['Campaign ID'])
       );
 
-      // Figure out which IDs we DON'T already have cached
-      const missingIds = allIds.filter(id => !campaignCache.has(id));
-
-      // Only fetch what's missing
-      if (missingIds.length > 0) {
-        await fetchCampaignBatch(missingIds, authHeader);
+      if (forceRefresh) {
+        campaignCache.clear();
+        urlBreakdownCache.clear();
+        await fetchCampaignBatch(allIds, authHeader);
+      } else {
+        const missingIds = allIds.filter(id => !campaignCache.has(id));
+        if (missingIds.length > 0) {
+          await fetchCampaignBatch(missingIds, authHeader);
+        }
       }
 
       cacheReady = true;
