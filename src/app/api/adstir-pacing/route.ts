@@ -27,6 +27,8 @@ let cacheTimestamp = 0;
 let reportDate = '';
 let fetchInProgress = false;
 const CACHE_TTL = 60 * 60 * 1000;
+const DAILY_INTERVAL = 24 * 60 * 60 * 1000;
+let cronStarted = false;
 
 function getConfig() {
   return {
@@ -134,6 +136,34 @@ async function fetchFromEmail(): Promise<{ records: AdStirPacingRecord[]; report
     await client.logout();
   }
 }
+
+async function backgroundRefresh() {
+  if (fetchInProgress) return;
+  const { user, password } = getConfig();
+  if (!user || !password) return;
+  fetchInProgress = true;
+  try {
+    const { records, reportPeriod } = await fetchFromEmail();
+    pacingCache = records;
+    reportDate = reportPeriod;
+    cacheTimestamp = Date.now();
+    console.log(`[AdStir Pacing Cron] Refreshed ${records.length} records at ${new Date().toISOString()}`);
+  } catch (err) {
+    console.error('[AdStir Pacing Cron] Failed:', err);
+  } finally {
+    fetchInProgress = false;
+  }
+}
+
+function startCron() {
+  if (cronStarted) return;
+  cronStarted = true;
+  setInterval(backgroundRefresh, DAILY_INTERVAL);
+  setTimeout(backgroundRefresh, 5000);
+  console.log('[AdStir Pacing Cron] Scheduled daily email check');
+}
+
+startCron();
 
 export async function GET(request: Request) {
   try {
