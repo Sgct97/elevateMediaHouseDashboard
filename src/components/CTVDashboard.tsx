@@ -1,11 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { PacingReport } from './PacingReport';
 import { PublisherNetworkDelivery } from './PublisherNetworkDelivery';
 import { ZipHeatmap } from './ZipHeatmap';
 import { BrandConfig } from '@/lib/brands';
-import type { PacingRecord } from '@/app/api/pacing/route';
 import type { CampaignDelivery } from '@/app/api/adstir-delivery/route';
 
 interface CTVDashboardProps {
@@ -13,27 +11,12 @@ interface CTVDashboardProps {
 }
 
 export function CTVDashboard({ brand }: CTVDashboardProps) {
-  const [pacingData, setPacingData] = useState<PacingRecord[]>([]);
   const [deliveryData, setDeliveryData] = useState<CampaignDelivery[]>([]);
   const [deliveryEmailDate, setDeliveryEmailDate] = useState<string>('');
   const [selectedDeliveryCampaign, setSelectedDeliveryCampaign] = useState<string>('');
-  const [loading, setLoading] = useState(true);
   const [deliveryLoading, setDeliveryLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-
-  const fetchPacingData = useCallback(async (refresh = false) => {
-    try {
-      const url = refresh ? '/api/pacing?refresh=true' : '/api/pacing';
-      const res = await fetch(url);
-      const json = await res.json();
-      if (json.data) setPacingData(json.data);
-    } catch (err) {
-      console.error('Error fetching pacing data:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
 
   const fetchDeliveryData = useCallback(async (refresh = false) => {
     try {
@@ -57,23 +40,21 @@ export function CTVDashboard({ brand }: CTVDashboardProps) {
   const refreshAll = useCallback(async () => {
     setIsRefreshing(true);
     try {
-      await Promise.all([fetchPacingData(true), fetchDeliveryData(true)]);
+      await fetchDeliveryData(true);
       setLastUpdated(new Date());
     } finally {
       setIsRefreshing(false);
     }
-  }, [fetchPacingData, fetchDeliveryData]);
+  }, [fetchDeliveryData]);
 
   useEffect(() => {
-    fetchPacingData();
     fetchDeliveryData();
     setLastUpdated(new Date());
     const interval = setInterval(() => {
-      fetchPacingData(true);
       fetchDeliveryData(true);
     }, 15 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [fetchPacingData, fetchDeliveryData]);
+  }, [fetchDeliveryData]);
 
   const campaignOptions = useMemo(
     () => deliveryData.map(c => ({ value: c.campaign, label: `${c.advertiser ? c.advertiser + ' — ' : ''}${c.campaign}` })),
@@ -105,8 +86,6 @@ export function CTVDashboard({ brand }: CTVDashboardProps) {
       </header>
 
       <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
-        <PacingReport data={pacingData} loading={loading} accentColor={brand.primaryColor} />
-
         <div className="bg-white border border-[#E2E8F0]">
           <div className="px-6 py-4 border-b border-[#E2E8F0] flex items-center justify-between flex-wrap gap-3">
             <div>
