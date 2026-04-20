@@ -35,6 +35,7 @@ export function ZipHeatmap({ campaigns, selectedCampaign, accentColor, loading }
   const [leafletReady, setLeafletReady] = useState(false);
 
   useEffect(() => {
+    // @ts-expect-error - CSS module has no type declarations
     import('leaflet/dist/leaflet.css').then(() => setLeafletReady(true));
   }, []);
 
