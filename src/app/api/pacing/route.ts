@@ -34,7 +34,9 @@ export interface PacingRecord {
 let pacingCache: PacingRecord[] = [];
 let cacheTimestamp: number = 0;
 let fetchInProgress = false;
+let cronStarted = false;
 const CACHE_TTL = 60 * 60 * 1000;
+const REFRESH_INTERVAL = 6 * 60 * 60 * 1000;
 
 function parseCSVLine(line: string): string[] {
   const fields: string[] = [];
@@ -127,6 +129,32 @@ async function fetchPacingFiles(): Promise<PacingRecord[]> {
 
   return parsePacingCSV(body);
 }
+
+async function backgroundRefresh() {
+  if (fetchInProgress) return;
+  if (!process.env.AWS_S3_ACCESS_KEY_ID || !process.env.AWS_S3_SECRET_ACCESS_KEY) return;
+  fetchInProgress = true;
+  try {
+    const records = await fetchPacingFiles();
+    pacingCache = records;
+    cacheTimestamp = Date.now();
+    console.log(`[CTV Pacing Cron] Refreshed ${records.length} records at ${new Date().toISOString()}`);
+  } catch (err) {
+    console.error('[CTV Pacing Cron] Failed:', err);
+  } finally {
+    fetchInProgress = false;
+  }
+}
+
+function startCron() {
+  if (cronStarted) return;
+  cronStarted = true;
+  setInterval(backgroundRefresh, REFRESH_INTERVAL);
+  setTimeout(backgroundRefresh, 14000);
+  console.log('[CTV Pacing Cron] Scheduled (every 6 hours)');
+}
+
+startCron();
 
 export async function GET(request: Request) {
   try {

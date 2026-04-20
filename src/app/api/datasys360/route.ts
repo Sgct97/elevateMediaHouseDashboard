@@ -1,22 +1,6 @@
 import { NextResponse } from 'next/server';
 
-const BASE_URL = 'https://www.datasys360.com';
-
-const BROWSER_HEADERS: Record<string, string> = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-  'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-  'Accept-Language': 'en-US,en;q=0.9',
-  'Accept-Encoding': 'identity',
-  'Connection': 'keep-alive',
-  'Upgrade-Insecure-Requests': '1',
-};
-
-const AJAX_HEADERS: Record<string, string> = {
-  ...BROWSER_HEADERS,
-  'Accept': 'application/json, text/javascript, */*; q=0.01',
-  'X-Requested-With': 'XMLHttpRequest',
-  'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-};
+const BASE_URL = 'https://www.datasys360.com/api/v3';
 
 export interface Datasys360Campaign {
   socialCampaignId: number;
@@ -34,241 +18,189 @@ export interface Datasys360Campaign {
   frequency: number;
 }
 
-// Session management
-let sessionCookie: string | null = null;
-let sessionTimestamp = 0;
-const SESSION_TTL = 30 * 60 * 1000; // 30 min — re-login before PHP expires it
+interface CampaignListItem {
+  social_id: number;
+  campaign_name: string;
+  create_date?: string;
+}
 
-// Data cache
+interface CampaignDetail {
+  social_id: number;
+  advertiser_id: number;
+  campaign_name: string;
+  impressions?: number;
+  frequenncy?: number;
+  start_date?: string;
+  end_date?: string;
+}
+
+interface Advertiser {
+  advertiser_id: number;
+  company_name: string;
+}
+
+interface SocialStats {
+  reach?: number;
+  impressions?: number;
+  clicks?: number;
+  frequency?: number;
+  ctr?: number;
+  unique_ctr?: number;
+}
+
 let dataCache: Datasys360Campaign[] = [];
 let cacheTimestamp = 0;
 let fetchInProgress = false;
-const CACHE_TTL = 60 * 60 * 1000; // 1 hour
+let cronStarted = false;
+const CACHE_TTL = 60 * 60 * 1000;
+const REFRESH_INTERVAL = 60 * 60 * 1000;
 
-function getCredentials() {
-  return {
-    username: process.env.DATASYS360_USERNAME || '',
-    password: process.env.DATASYS360_PASSWORD || '',
-  };
+function getApiKey(): string {
+  return process.env.DATASYS360_API_KEY || '';
 }
 
-function extractSetCookie(response: Response): string | null {
-  const raw = response.headers.get('set-cookie');
-  if (!raw) return null;
-  const match = raw.match(/PHPSESSID=([^;]+)/);
-  return match ? `PHPSESSID=${match[1]}` : null;
-}
+async function apiGet<T>(path: string): Promise<T | null> {
+  const apiKey = getApiKey();
+  if (!apiKey) throw new Error('DATASYS360_API_KEY not configured');
 
-async function login(): Promise<string> {
-  const { username, password } = getCredentials();
-  if (!username || !password) throw new Error('Datasys360 credentials not configured');
-
-  const res = await fetch(`${BASE_URL}/System/ajax/login.php`, {
-    method: 'POST',
-    headers: {
-      ...AJAX_HEADERS,
-      'Referer': `${BASE_URL}/login.php`,
-    },
-    body: `Username=${encodeURIComponent(username)}&Password=${encodeURIComponent(password)}`,
-    redirect: 'manual',
+  const res = await fetch(`${BASE_URL}${path}`, {
+    headers: { 'X-Api-Key': apiKey, Accept: 'application/json' },
   });
+  if (!res.ok) return null;
+  const body = await res.json().catch(() => null);
+  if (!body || body.status !== 1) return null;
+  return body.data as T;
+}
 
-  const cookie = extractSetCookie(res);
-  const body = await res.text();
-
-  if (!body.includes('SUCCESS') && !cookie) {
-    throw new Error('Datasys360 login failed');
+async function fetchAllCampaigns(): Promise<CampaignListItem[]> {
+  const all: CampaignListItem[] = [];
+  const limit = 100;
+  for (let page = 1; page <= 20; page++) {
+    const data = await apiGet<{ campaigns: CampaignListItem[]; total_campaigns: number }>(
+      `/social/campaigns?limit=${limit}&page=${page}`
+    );
+    if (!data || !Array.isArray(data.campaigns) || data.campaigns.length === 0) break;
+    all.push(...data.campaigns);
+    if (all.length >= (data.total_campaigns || 0)) break;
   }
-
-  if (cookie) {
-    sessionCookie = cookie;
-    sessionTimestamp = Date.now();
-  }
-
-  if (!sessionCookie) throw new Error('No session cookie received');
-  return sessionCookie;
+  return all;
 }
 
-async function getSession(): Promise<string> {
-  if (sessionCookie && (Date.now() - sessionTimestamp) < SESSION_TTL) {
-    return sessionCookie;
-  }
-  return login();
+async function fetchCampaignDetail(socialId: number): Promise<CampaignDetail | null> {
+  return apiGet<CampaignDetail>(`/social/campaign/${socialId}`);
 }
 
-async function fetchWithSession(url: string, headers: Record<string, string>, retryOnAuthFail = true): Promise<Response> {
-  const cookie = await getSession();
-  const res = await fetch(url, {
-    headers: { ...headers, 'Cookie': cookie },
-    redirect: 'manual',
-  });
-
-  const isRedirectToLogin = res.status === 302 || res.status === 301;
-  const location = res.headers.get('location') || '';
-  if (isRedirectToLogin && location.includes('login') && retryOnAuthFail) {
-    sessionCookie = null;
-    const newCookie = await login();
-    return fetch(url, {
-      headers: { ...headers, 'Cookie': newCookie },
-      redirect: 'manual',
-    });
-  }
-
-  return res;
+async function fetchCampaignStats(socialId: number): Promise<SocialStats | null> {
+  return apiGet<SocialStats>(`/social/campaign/stats/${socialId}`);
 }
 
-async function fetchSocialCampaignList(): Promise<Array<{
-  SocialCampaignID: number;
-  CampaignName: string;
-  AdvertiserName: string;
-  StartDate: string;
-  EndDate: string;
-  Impressions: number;
-  Frequency: number;
-}>> {
-  const now = new Date();
-  const startDate = new Date(now.getFullYear() - 1, 0, 1);
-  const sd = `${String(startDate.getMonth() + 1).padStart(2, '0')}/${String(startDate.getDate()).padStart(2, '0')}/${startDate.getFullYear()}`;
-  const ed = `${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}/${now.getFullYear()}`;
-
-  const url = `${BASE_URL}/System/ajax/social_campaigns.php?_s=${encodeURIComponent(sd)}&_e=${encodeURIComponent(ed)}`;
-  const res = await fetchWithSession(url, {
-    ...AJAX_HEADERS,
-    'Referer': `${BASE_URL}/campaign-social-dashboard.php`,
-  });
-
-  const json = await res.json();
-  if (!json.data || !Array.isArray(json.data)) return [];
-  return json.data;
+const advertiserCache = new Map<number, string>();
+async function fetchAdvertiserName(advertiserId: number): Promise<string> {
+  if (advertiserCache.has(advertiserId)) return advertiserCache.get(advertiserId)!;
+  const data = await apiGet<Advertiser>(`/advertiser/${advertiserId}`);
+  const name = data?.company_name || `Advertiser ${advertiserId}`;
+  advertiserCache.set(advertiserId, name);
+  return name;
 }
 
-function parseMetricFromHTML(html: string, label: string): number {
-  const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pattern = new RegExp(
-    `${escapedLabel}[\\s\\S]*?<span[^>]*class="[^"]*browser-result[^"]*"[^>]*>\\s*([\\d,.]+)`,
-    'i'
-  );
-  const match = html.match(pattern);
-  if (match) return parseFloat(match[1].replace(/,/g, '')) || 0;
-
-  const fallbackPattern = new RegExp(
-    `${escapedLabel}[\\s\\S]{0,500}?>[\\s]*([\\d,]+(?:\\.\\d+)?)[\\s]*<`,
-    'i'
-  );
-  const fallback = html.match(fallbackPattern);
-  if (fallback) return parseFloat(fallback[1].replace(/,/g, '')) || 0;
-
-  return 0;
-}
-
-function parsePercentFromHTML(html: string, label: string): number {
-  const escapedLabel = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pattern = new RegExp(
-    `${escapedLabel}[\\s\\S]*?<span[^>]*class="[^"]*browser-result[^"]*"[^>]*>\\s*([\\d,.]+)`,
-    'i'
-  );
-  const match = html.match(pattern);
-  if (match) return parseFloat(match[1]) || 0;
-
-  const fallbackPattern = new RegExp(
-    `${escapedLabel}[\\s\\S]{0,500}?>[\\s]*([\\d]+\\.\\d+)[\\s]*<`,
-    'i'
-  );
-  const fallback = html.match(fallbackPattern);
-  if (fallback) return parseFloat(fallback[1]) || 0;
-
-  return 0;
-}
-
-async function scrapeCampaignStats(campaignId: number): Promise<{
-  totalReach: number;
-  totalImpressions: number;
-  linkClicks: number;
-  ctr: number;
-  uniqueCtr: number;
-  frequency: number;
-} | null> {
-  try {
-    const url = `${BASE_URL}/tracking-report-social.php?cid=${campaignId}`;
-    const res = await fetchWithSession(url, {
-      ...BROWSER_HEADERS,
-      'Referer': `${BASE_URL}/campaign-social-dashboard.php`,
-    });
-
-    const html = await res.text();
-
-    if (html.length < 1000 || html.includes('<title>404') || html.includes('login.php')) {
-      return null;
-    }
-
-    return {
-      totalReach: parseMetricFromHTML(html, 'Total Reach'),
-      totalImpressions: parseMetricFromHTML(html, 'Total Impressions'),
-      linkClicks: parseMetricFromHTML(html, 'Link Clicks'),
-      ctr: parsePercentFromHTML(html, 'CTR'),
-      uniqueCtr: parsePercentFromHTML(html, 'Unique CTR'),
-      frequency: parsePercentFromHTML(html, 'Frequency'),
-    };
-  } catch (e) {
-    console.error(`Failed to scrape campaign ${campaignId}:`, e);
-    return null;
-  }
-}
-
-function delay(ms: number) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-async function fetchAllData(): Promise<Datasys360Campaign[]> {
-  const campaigns = await fetchSocialCampaignList();
-  if (campaigns.length === 0) return [];
-
-  const results: Datasys360Campaign[] = [];
-
-  for (let i = 0; i < campaigns.length; i++) {
-    const c = campaigns[i];
-    const stats = await scrapeCampaignStats(c.SocialCampaignID);
-
-    results.push({
-      socialCampaignId: c.SocialCampaignID,
-      campaignName: c.CampaignName,
-      advertiserName: c.AdvertiserName,
-      startDate: c.StartDate,
-      endDate: c.EndDate,
-      orderedImpressions: c.Impressions || 0,
-      configuredFrequency: c.Frequency || 0,
-      totalReach: stats?.totalReach || 0,
-      totalImpressions: stats?.totalImpressions || 0,
-      linkClicks: stats?.linkClicks || 0,
-      ctr: stats?.ctr || 0,
-      uniqueCtr: stats?.uniqueCtr || 0,
-      frequency: stats?.frequency || 0,
-    });
-
-    if (i < campaigns.length - 1) {
-      await delay(800 + Math.random() * 700);
+async function runWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let idx = 0;
+  async function worker() {
+    while (true) {
+      const i = idx++;
+      if (i >= items.length) return;
+      results[i] = await fn(items[i]);
     }
   }
-
+  const workers = Array.from({ length: Math.min(limit, items.length) }, () => worker());
+  await Promise.all(workers);
   return results;
 }
 
+async function buildAllCampaigns(): Promise<Datasys360Campaign[]> {
+  const list = await fetchAllCampaigns();
+  if (list.length === 0) return [];
+
+  const enriched = await runWithConcurrency(list, 6, async (item) => {
+    const [detail, stats] = await Promise.all([
+      fetchCampaignDetail(item.social_id),
+      fetchCampaignStats(item.social_id),
+    ]);
+
+    let advertiserName = '';
+    if (detail?.advertiser_id) {
+      try { advertiserName = await fetchAdvertiserName(detail.advertiser_id); } catch {}
+    }
+
+    const s: SocialStats = stats || {};
+    const impressions = s.impressions ?? 0;
+    const reach = s.reach ?? 0;
+    const clicks = s.clicks ?? 0;
+    const computedFreq = reach > 0 ? impressions / reach : 0;
+
+    const record: Datasys360Campaign = {
+      socialCampaignId: item.social_id,
+      campaignName: detail?.campaign_name || item.campaign_name,
+      advertiserName,
+      startDate: detail?.start_date || '',
+      endDate: detail?.end_date || '',
+      orderedImpressions: detail?.impressions || 0,
+      configuredFrequency: detail?.frequenncy || 0,
+      totalReach: reach,
+      totalImpressions: impressions,
+      linkClicks: clicks,
+      ctr: s.ctr ?? 0,
+      uniqueCtr: s.unique_ctr ?? 0,
+      frequency: s.frequency ?? computedFreq,
+    };
+    return record;
+  });
+
+  return enriched.filter(Boolean).sort((a, b) => b.totalImpressions - a.totalImpressions);
+}
+
+async function backgroundRefresh() {
+  if (fetchInProgress) return;
+  if (!getApiKey()) return;
+  fetchInProgress = true;
+  try {
+    const data = await buildAllCampaigns();
+    dataCache = data;
+    cacheTimestamp = Date.now();
+    console.log(`[Datasys360 Cron] Refreshed ${data.length} campaigns at ${new Date().toISOString()}`);
+  } catch (err) {
+    console.error('[Datasys360 Cron] Failed:', err);
+  } finally {
+    fetchInProgress = false;
+  }
+}
+
+function startCron() {
+  if (cronStarted) return;
+  cronStarted = true;
+  setInterval(backgroundRefresh, REFRESH_INTERVAL);
+  setTimeout(backgroundRefresh, 8000);
+  console.log('[Datasys360 Cron] Scheduled (hourly refresh)');
+}
+
+startCron();
+
 export async function GET(request: Request) {
   try {
-    const { username, password } = getCredentials();
-    if (!username || !password) {
+    if (!getApiKey()) {
       return NextResponse.json(
-        { error: 'Datasys360 credentials not configured', data: [] },
+        { error: 'DATASYS360_API_KEY not configured', data: [] },
         { status: 503 }
       );
     }
 
     const url = new URL(request.url);
     const forceRefresh = url.searchParams.get('refresh') === 'true';
-
     const now = Date.now();
-    if (!forceRefresh && dataCache.length > 0 && (now - cacheTimestamp) < CACHE_TTL) {
-      return NextResponse.json({ data: dataCache, fromCache: true, fetchedAt: new Date(cacheTimestamp).toISOString() });
+
+    if (!forceRefresh && dataCache.length > 0 && now - cacheTimestamp < CACHE_TTL) {
+      return NextResponse.json({ data: dataCache, fromCache: true });
     }
 
     if (fetchInProgress) {
@@ -280,20 +212,20 @@ export async function GET(request: Request) {
 
     fetchInProgress = true;
     try {
-      const records = await fetchAllData();
-      dataCache = records;
+      const data = await buildAllCampaigns();
+      dataCache = data;
       cacheTimestamp = Date.now();
-      return NextResponse.json({ data: records, fetchedAt: new Date().toISOString() });
+      return NextResponse.json({ data });
     } finally {
       fetchInProgress = false;
     }
-  } catch (error) {
+  } catch (err) {
     if (dataCache.length > 0) {
       return NextResponse.json({ data: dataCache, fromCache: true, stale: true });
     }
-    console.error('Error fetching Datasys360 data:', error);
+    console.error('[Datasys360] Error:', err);
     return NextResponse.json(
-      { error: 'Failed to fetch Datasys360 data', message: error instanceof Error ? error.message : 'Unknown error', data: [] },
+      { error: 'Failed to fetch Datasys360 data', data: [] },
       { status: 500 }
     );
   }

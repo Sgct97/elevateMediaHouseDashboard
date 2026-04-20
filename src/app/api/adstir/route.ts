@@ -30,7 +30,9 @@ export interface AdStirRecord {
 let adstirCache: AdStirRecord[] = [];
 let cacheTimestamp: number = 0;
 let fetchInProgress = false;
+let cronStarted = false;
 const CACHE_TTL = 60 * 60 * 1000; // 1 hour
+const REFRESH_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours
 
 function parseCSV(csv: string): AdStirRecord[] {
   const lines = csv.trim().split('\n');
@@ -91,6 +93,32 @@ async function fetchAllCSVFiles(): Promise<AdStirRecord[]> {
 
   return Array.from(allRecords.values());
 }
+
+async function backgroundRefresh() {
+  if (fetchInProgress) return;
+  if (!process.env.AWS_S3_ACCESS_KEY_ID || !process.env.AWS_S3_SECRET_ACCESS_KEY) return;
+  fetchInProgress = true;
+  try {
+    const records = await fetchAllCSVFiles();
+    adstirCache = records;
+    cacheTimestamp = Date.now();
+    console.log(`[AdStir Cron] Refreshed ${records.length} records at ${new Date().toISOString()}`);
+  } catch (err) {
+    console.error('[AdStir Cron] Failed:', err);
+  } finally {
+    fetchInProgress = false;
+  }
+}
+
+function startCron() {
+  if (cronStarted) return;
+  cronStarted = true;
+  setInterval(backgroundRefresh, REFRESH_INTERVAL);
+  setTimeout(backgroundRefresh, 12000);
+  console.log('[AdStir Cron] Scheduled (every 6 hours)');
+}
+
+startCron();
 
 export async function GET(request: Request) {
   try {

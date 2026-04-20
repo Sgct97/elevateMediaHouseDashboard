@@ -14,7 +14,9 @@ export interface GroundTruthCampaign {
 let dataCache: GroundTruthCampaign[] = [];
 let cacheTimestamp = 0;
 let fetchInProgress = false;
+let cronStarted = false;
 const CACHE_TTL = 60 * 60 * 1000;
+const REFRESH_INTERVAL = 4 * 60 * 60 * 1000;
 
 function getConfig() {
   return {
@@ -99,6 +101,33 @@ async function fetchAllData(): Promise<GroundTruthCampaign[]> {
     ctr: data.impressions > 0 ? +((data.clicks / data.impressions) * 100).toFixed(2) : 0,
   }));
 }
+
+async function backgroundRefresh() {
+  if (fetchInProgress) return;
+  const { userId, apiKey, accountId } = getConfig();
+  if (!userId || !apiKey || !accountId) return;
+  fetchInProgress = true;
+  try {
+    const records = await fetchAllData();
+    dataCache = records;
+    cacheTimestamp = Date.now();
+    console.log(`[GroundTruth Cron] Refreshed ${records.length} campaigns at ${new Date().toISOString()}`);
+  } catch (err) {
+    console.error('[GroundTruth Cron] Failed:', err);
+  } finally {
+    fetchInProgress = false;
+  }
+}
+
+function startCron() {
+  if (cronStarted) return;
+  cronStarted = true;
+  setInterval(backgroundRefresh, REFRESH_INTERVAL);
+  setTimeout(backgroundRefresh, 16000);
+  console.log('[GroundTruth Cron] Scheduled (every 4 hours)');
+}
+
+startCron();
 
 export async function GET(request: Request) {
   try {

@@ -7,6 +7,8 @@ const campaignCache = new Map<string, unknown>();
 const urlBreakdownCache = new Map<string, { campaignId: string; urls: unknown[] }>();
 let cacheReady = false;
 let fetchInProgress = false; // Prevent concurrent fetches from overlapping
+let cronStarted = false;
+const REFRESH_INTERVAL = 6 * 60 * 60 * 1000;
 
 function getAuthHeader(): string | null {
   const username = process.env.WORTHAUTOTRACK_USERNAME;
@@ -81,6 +83,54 @@ async function fetchCampaignBatch(ids: string[], authHeader: string) {
   }
 }
 
+async function runFetch(authHeader: string, forceRefresh: boolean): Promise<void> {
+  const allCampaignsResponse = await fetchWithRetry(`${API_BASE_URL}/campaigns/all/`, {
+    headers: { 'Authorization': authHeader },
+  });
+  if (!allCampaignsResponse.ok) {
+    throw new Error(`API returned ${allCampaignsResponse.status}`);
+  }
+  const allCampaignsData = await allCampaignsResponse.json();
+  const allIds: string[] = allCampaignsData.Data.map((c: { 'Campaign ID': number }) => String(c['Campaign ID']));
+
+  if (forceRefresh) {
+    campaignCache.clear();
+    urlBreakdownCache.clear();
+    await fetchCampaignBatch(allIds, authHeader);
+  } else {
+    const missingIds = allIds.filter(id => !campaignCache.has(id));
+    if (missingIds.length > 0) {
+      await fetchCampaignBatch(missingIds, authHeader);
+    }
+  }
+  cacheReady = true;
+}
+
+async function backgroundRefresh() {
+  if (fetchInProgress) return;
+  const authHeader = getAuthHeader();
+  if (!authHeader) return;
+  fetchInProgress = true;
+  try {
+    await runFetch(authHeader, true);
+    console.log(`[Campaigns Cron] Refreshed ${campaignCache.size} campaigns at ${new Date().toISOString()}`);
+  } catch (err) {
+    console.error('[Campaigns Cron] Failed:', err);
+  } finally {
+    fetchInProgress = false;
+  }
+}
+
+function startCron() {
+  if (cronStarted) return;
+  cronStarted = true;
+  setInterval(backgroundRefresh, REFRESH_INTERVAL);
+  setTimeout(backgroundRefresh, 20000);
+  console.log('[Campaigns Cron] Scheduled (every 6 hours)');
+}
+
+startCron();
+
 function buildResponse(extras: Record<string, unknown> = {}) {
   return {
     campaigns: Array.from(campaignCache.values()),
@@ -130,40 +180,8 @@ export async function GET(request: Request) {
     fetchInProgress = true;
 
     try {
-      // Get the full list of campaign IDs from the API
-      const allCampaignsResponse = await fetchWithRetry(`${API_BASE_URL}/campaigns/all/`, {
-        headers: { 'Authorization': authHeader },
-      });
-
-      if (!allCampaignsResponse.ok) {
-        if (allCampaignsResponse.status === 401) {
-          return NextResponse.json(
-            { error: 'Authentication failed. Check your API credentials.' },
-            { status: 401 }
-          );
-        }
-        throw new Error(`API returned ${allCampaignsResponse.status}`);
-      }
-
-      const allCampaignsData = await allCampaignsResponse.json();
-      const allIds: string[] = allCampaignsData.Data.map(
-        (c: { 'Campaign ID': number }) => String(c['Campaign ID'])
-      );
-
-      if (forceRefresh) {
-        campaignCache.clear();
-        urlBreakdownCache.clear();
-        await fetchCampaignBatch(allIds, authHeader);
-      } else {
-        const missingIds = allIds.filter(id => !campaignCache.has(id));
-        if (missingIds.length > 0) {
-          await fetchCampaignBatch(missingIds, authHeader);
-        }
-      }
-
-      cacheReady = true;
+      await runFetch(authHeader, forceRefresh);
       return NextResponse.json(buildResponse());
-
     } finally {
       fetchInProgress = false;
     }

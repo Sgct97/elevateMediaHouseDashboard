@@ -17,7 +17,9 @@ export interface PacingCampaign {
 let pacingCache: PacingCampaign[] = [];
 let cacheTimestamp = 0;
 let fetchInProgress = false;
+let cronStarted = false;
 const CACHE_TTL = 60 * 60 * 1000;
+const REFRESH_INTERVAL = 4 * 60 * 60 * 1000;
 
 function getConfig() {
   return {
@@ -176,6 +178,33 @@ async function fetchAllPacingData(): Promise<PacingCampaign[]> {
     };
   });
 }
+
+async function backgroundRefresh() {
+  if (fetchInProgress) return;
+  const { userId, apiKey, accountId, tenantId } = getConfig();
+  if (!userId || !apiKey || !accountId || !tenantId) return;
+  fetchInProgress = true;
+  try {
+    const records = await fetchAllPacingData();
+    pacingCache = records;
+    cacheTimestamp = Date.now();
+    console.log(`[GroundTruth Pacing Cron] Refreshed ${records.length} campaigns at ${new Date().toISOString()}`);
+  } catch (err) {
+    console.error('[GroundTruth Pacing Cron] Failed:', err);
+  } finally {
+    fetchInProgress = false;
+  }
+}
+
+function startCron() {
+  if (cronStarted) return;
+  cronStarted = true;
+  setInterval(backgroundRefresh, REFRESH_INTERVAL);
+  setTimeout(backgroundRefresh, 18000);
+  console.log('[GroundTruth Pacing Cron] Scheduled (every 4 hours)');
+}
+
+startCron();
 
 export async function GET(request: Request) {
   try {
