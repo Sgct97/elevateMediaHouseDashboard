@@ -8,16 +8,18 @@ interface Props {
   selectedCampaign: string;
   accentColor: string;
   loading: boolean;
+  reachByCampaign?: Map<string, number>;
 }
 
-type SortKey = 'publisher' | 'impressions' | 'completedViews' | 'clicks';
+type SortKey = 'publisher' | 'impressions' | 'completedViews' | 'completedViewsPct' | 'clicks';
 type SortDir = 'asc' | 'desc';
 
-export function PublisherNetworkDelivery({ campaigns, selectedCampaign, accentColor, loading }: Props) {
+export function PublisherNetworkDelivery({ campaigns, selectedCampaign, accentColor, loading, reachByCampaign }: Props) {
   const [search, setSearch] = useState('');
   const [limit, setLimit] = useState<'20' | '50' | '100' | 'all'>('50');
   const [sortKey, setSortKey] = useState<SortKey>('impressions');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [showClicks, setShowClicks] = useState(true);
 
   const activeCampaign = useMemo(
     () => campaigns.find(c => c.campaign === selectedCampaign),
@@ -31,6 +33,11 @@ export function PublisherNetworkDelivery({ campaigns, selectedCampaign, accentCo
     if (q) rows = rows.filter(p => p.publisher.toLowerCase().includes(q));
 
     const sorted = [...rows].sort((a, b) => {
+      if (sortKey === 'completedViewsPct') {
+        const av = a.impressions > 0 ? a.completedViews / a.impressions : 0;
+        const bv = b.impressions > 0 ? b.completedViews / b.impressions : 0;
+        return sortDir === 'asc' ? av - bv : bv - av;
+      }
       let av: string | number = a[sortKey];
       let bv: string | number = b[sortKey];
       if (typeof av === 'string') {
@@ -45,14 +52,19 @@ export function PublisherNetworkDelivery({ campaigns, selectedCampaign, accentCo
   }, [activeCampaign, search, limit, sortKey, sortDir]);
 
   const totals = useMemo(() => {
-    if (!activeCampaign) return { impressions: 0, completedViews: 0, clicks: 0, publishers: 0 };
+    if (!activeCampaign) return { impressions: 0, completedViews: 0, completedViewsPct: 0, clicks: 0, reach: 0, frequency: 0 };
+    const impressions = activeCampaign.totalImpressions;
+    const completedViews = activeCampaign.totalCompletedViews;
+    const reach = reachByCampaign?.get(activeCampaign.campaign) || 0;
     return {
-      impressions: activeCampaign.totalImpressions,
-      completedViews: activeCampaign.totalCompletedViews,
+      impressions,
+      completedViews,
+      completedViewsPct: impressions > 0 ? (completedViews / impressions) * 100 : 0,
       clicks: activeCampaign.totalClicks,
-      publishers: activeCampaign.publishers.length,
+      reach,
+      frequency: reach > 0 ? impressions / reach : 0,
     };
-  }, [activeCampaign]);
+  }, [activeCampaign, reachByCampaign]);
 
   function toggleSort(k: SortKey) {
     if (sortKey === k) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -64,6 +76,25 @@ export function PublisherNetworkDelivery({ campaigns, selectedCampaign, accentCo
       {sortKey === k ? (sortDir === 'asc' ? '▲' : '▼') : ''}
     </span>
   );
+
+  const kpiCards = [
+    { label: 'Impressions', value: totals.impressions.toLocaleString() },
+    { label: 'Completed Views', value: totals.completedViews.toLocaleString() },
+    { label: 'Completed View %', value: `${totals.completedViewsPct.toFixed(2)}%` },
+    { label: 'Reach', value: totals.reach.toLocaleString() },
+    { label: 'Frequency', value: totals.frequency.toFixed(2) },
+    ...(showClicks ? [{ label: 'Clicks', value: totals.clicks.toLocaleString() }] : []),
+  ];
+
+  const tableCols = [
+    { k: 'publisher' as const, label: 'Publisher', align: 'left' as const },
+    { k: 'impressions' as const, label: 'Impressions', align: 'right' as const },
+    { k: 'completedViews' as const, label: 'Completed Views', align: 'right' as const },
+    { k: 'completedViewsPct' as const, label: 'Completed View %', align: 'right' as const },
+    ...(showClicks ? [{ k: 'clicks' as const, label: 'Clicks', align: 'right' as const }] : []),
+  ];
+
+  const colSpan = tableCols.length;
 
   return (
     <div className="bg-white border border-[#E2E8F0]">
@@ -77,6 +108,15 @@ export function PublisherNetworkDelivery({ campaigns, selectedCampaign, accentCo
           )}
         </div>
         <div className="flex items-center gap-3 flex-wrap">
+          <label className="flex items-center gap-1.5 text-xs text-[#718096] cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={showClicks}
+              onChange={e => setShowClicks(e.target.checked)}
+              style={{ accentColor }}
+            />
+            Show Clicks
+          </label>
           <input
             type="text"
             placeholder="Search publishers..."
@@ -104,13 +144,11 @@ export function PublisherNetworkDelivery({ campaigns, selectedCampaign, accentCo
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-px bg-[#E2E8F0] border-b border-[#E2E8F0]">
-        {[
-          { label: 'Publishers', value: totals.publishers.toLocaleString() },
-          { label: 'Impressions', value: totals.impressions.toLocaleString() },
-          { label: 'Completed Views', value: totals.completedViews.toLocaleString() },
-          { label: 'Clicks', value: totals.clicks.toLocaleString() },
-        ].map(s => (
+      <div
+        className="grid gap-px bg-[#E2E8F0] border-b border-[#E2E8F0]"
+        style={{ gridTemplateColumns: `repeat(${kpiCards.length}, minmax(0, 1fr))` }}
+      >
+        {kpiCards.map(s => (
           <div key={s.label} className="bg-white px-6 py-3">
             <div className="text-[10px] uppercase tracking-wider text-[#A0AEC0]">{s.label}</div>
             <div className="text-lg font-light text-[#2D3748] mt-0.5">{s.value}</div>
@@ -122,12 +160,7 @@ export function PublisherNetworkDelivery({ campaigns, selectedCampaign, accentCo
         <table className="w-full text-sm">
           <thead className="bg-[#F8FAFB] sticky top-0">
             <tr>
-              {([
-                { k: 'publisher', label: 'Publisher', align: 'left' },
-                { k: 'impressions', label: 'Impressions', align: 'right' },
-                { k: 'completedViews', label: 'Completed Views', align: 'right' },
-                { k: 'clicks', label: 'Clicks', align: 'right' },
-              ] as const).map(c => (
+              {tableCols.map(c => (
                 <th
                   key={c.k}
                   onClick={() => toggleSort(c.k as SortKey)}
@@ -140,20 +173,26 @@ export function PublisherNetworkDelivery({ campaigns, selectedCampaign, accentCo
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={4} className="px-6 py-12 text-center text-xs text-[#A0AEC0]">Loading delivery data...</td></tr>
+              <tr><td colSpan={colSpan} className="px-6 py-12 text-center text-xs text-[#A0AEC0]">Loading delivery data...</td></tr>
             ) : !activeCampaign ? (
-              <tr><td colSpan={4} className="px-6 py-12 text-center text-xs text-[#A0AEC0]">Select a campaign to view publisher delivery.</td></tr>
+              <tr><td colSpan={colSpan} className="px-6 py-12 text-center text-xs text-[#A0AEC0]">Select a campaign to view publisher delivery.</td></tr>
             ) : sortedFiltered.length === 0 ? (
-              <tr><td colSpan={4} className="px-6 py-12 text-center text-xs text-[#A0AEC0]">No publishers match your search.</td></tr>
+              <tr><td colSpan={colSpan} className="px-6 py-12 text-center text-xs text-[#A0AEC0]">No publishers match your search.</td></tr>
             ) : (
-              sortedFiltered.map(p => (
-                <tr key={p.publisher} className="border-t border-[#F1F5F9] hover:bg-[#FAFBFC] transition-colors">
-                  <td className="px-6 py-2.5 text-[#2D3748]">{p.publisher}</td>
-                  <td className="px-6 py-2.5 text-right tabular-nums text-[#2D3748]">{p.impressions.toLocaleString()}</td>
-                  <td className="px-6 py-2.5 text-right tabular-nums text-[#718096]">{p.completedViews.toLocaleString()}</td>
-                  <td className="px-6 py-2.5 text-right tabular-nums text-[#2D3748]">{p.clicks.toLocaleString()}</td>
-                </tr>
-              ))
+              sortedFiltered.map(p => {
+                const cvPct = p.impressions > 0 ? (p.completedViews / p.impressions) * 100 : 0;
+                return (
+                  <tr key={p.publisher} className="border-t border-[#F1F5F9] hover:bg-[#FAFBFC] transition-colors">
+                    <td className="px-6 py-2.5 text-[#2D3748]">{p.publisher}</td>
+                    <td className="px-6 py-2.5 text-right tabular-nums text-[#2D3748]">{p.impressions.toLocaleString()}</td>
+                    <td className="px-6 py-2.5 text-right tabular-nums text-[#718096]">{p.completedViews.toLocaleString()}</td>
+                    <td className="px-6 py-2.5 text-right tabular-nums text-[#718096]">{cvPct.toFixed(2)}%</td>
+                    {showClicks && (
+                      <td className="px-6 py-2.5 text-right tabular-nums text-[#2D3748]">{p.clicks.toLocaleString()}</td>
+                    )}
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

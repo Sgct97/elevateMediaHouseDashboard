@@ -5,6 +5,7 @@ import { PublisherNetworkDelivery } from './PublisherNetworkDelivery';
 import { ZipHeatmap } from './ZipHeatmap';
 import { BrandConfig } from '@/lib/brands';
 import type { CampaignDelivery } from '@/app/api/adstir-delivery/route';
+import type { AdStirRecord } from '@/app/api/adstir/route';
 
 interface CTVDashboardProps {
   brand: BrandConfig;
@@ -15,6 +16,7 @@ export function CTVDashboard({ brand }: CTVDashboardProps) {
   const [deliveryEmailDate, setDeliveryEmailDate] = useState<string>('');
   const [selectedDeliveryCampaign, setSelectedDeliveryCampaign] = useState<string>('');
   const [deliveryLoading, setDeliveryLoading] = useState(true);
+  const [adstirData, setAdstirData] = useState<AdStirRecord[]>([]);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -37,27 +39,52 @@ export function CTVDashboard({ brand }: CTVDashboardProps) {
     }
   }, [selectedDeliveryCampaign]);
 
+  const fetchAdstirData = useCallback(async (refresh = false) => {
+    try {
+      const url = refresh ? '/api/adstir?refresh=true' : '/api/adstir';
+      const res = await fetch(url);
+      const json = await res.json();
+      if (Array.isArray(json.data)) setAdstirData(json.data);
+    } catch (err) {
+      console.error('Error fetching AdStir data:', err);
+    }
+  }, []);
+
   const refreshAll = useCallback(async () => {
     setIsRefreshing(true);
     try {
-      await fetchDeliveryData(true);
+      await Promise.all([fetchDeliveryData(true), fetchAdstirData(true)]);
       setLastUpdated(new Date());
     } finally {
       setIsRefreshing(false);
     }
-  }, [fetchDeliveryData]);
+  }, [fetchDeliveryData, fetchAdstirData]);
 
   useEffect(() => {
     fetchDeliveryData();
+    fetchAdstirData();
     setLastUpdated(new Date());
     const interval = setInterval(() => {
       fetchDeliveryData(true);
+      fetchAdstirData(true);
     }, 15 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [fetchDeliveryData]);
+  }, [fetchDeliveryData, fetchAdstirData]);
+
+  // Aggregate reach (unique impressions) per campaign name from AdStir daily data
+  const reachByCampaign = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const r of adstirData) {
+      map.set(r.campaign, (map.get(r.campaign) || 0) + (r.uniqueImpressions || 0));
+    }
+    return map;
+  }, [adstirData]);
 
   const campaignOptions = useMemo(
-    () => deliveryData.map(c => ({ value: c.campaign, label: `${c.advertiser ? c.advertiser + ' — ' : ''}${c.campaign}` })),
+    () =>
+      deliveryData
+        .map(c => ({ value: c.campaign, label: `${c.advertiser ? c.advertiser + ' — ' : ''}${c.campaign}` }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
     [deliveryData]
   );
 
@@ -118,6 +145,7 @@ export function CTVDashboard({ brand }: CTVDashboardProps) {
           selectedCampaign={selectedDeliveryCampaign}
           accentColor={brand.primaryColor}
           loading={deliveryLoading}
+          reachByCampaign={reachByCampaign}
         />
 
         <ZipHeatmap
