@@ -9,13 +9,13 @@ interface Props {
   accentColor: string;
   loading: boolean;
   reachByCampaign?: Map<string, number>;
+  selectedPublishers?: Set<string>;
 }
 
 type SortKey = 'publisher' | 'impressions' | 'completedViews' | 'completedViewsPct' | 'clicks';
 type SortDir = 'asc' | 'desc';
 
-export function PublisherNetworkDelivery({ campaigns, selectedCampaign, accentColor, loading, reachByCampaign }: Props) {
-  const [search, setSearch] = useState('');
+export function PublisherNetworkDelivery({ campaigns, selectedCampaign, accentColor, loading, reachByCampaign, selectedPublishers }: Props) {
   const [limit, setLimit] = useState<'20' | '50' | '100' | 'all'>('50');
   const [sortKey, setSortKey] = useState<SortKey>('impressions');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -26,13 +26,16 @@ export function PublisherNetworkDelivery({ campaigns, selectedCampaign, accentCo
     [campaigns, selectedCampaign]
   );
 
-  const sortedFiltered = useMemo(() => {
+  // Apply publisher filter: empty set = all, '__none__' sentinel = none, otherwise include only those in set
+  const filteredPublishers = useMemo(() => {
     if (!activeCampaign) return [];
-    const q = search.trim().toLowerCase();
-    let rows = activeCampaign.publishers;
-    if (q) rows = rows.filter(p => p.publisher.toLowerCase().includes(q));
+    if (!selectedPublishers || selectedPublishers.size === 0) return activeCampaign.publishers;
+    if (selectedPublishers.has('__none__')) return [];
+    return activeCampaign.publishers.filter(p => selectedPublishers.has(p.publisher));
+  }, [activeCampaign, selectedPublishers]);
 
-    const sorted = [...rows].sort((a, b) => {
+  const sortedFiltered = useMemo(() => {
+    const sorted = [...filteredPublishers].sort((a, b) => {
       if (sortKey === 'completedViewsPct') {
         const av = a.impressions > 0 ? a.completedViews / a.impressions : 0;
         const bv = b.impressions > 0 ? b.completedViews / b.impressions : 0;
@@ -47,24 +50,27 @@ export function PublisherNetworkDelivery({ campaigns, selectedCampaign, accentCo
       }
       return sortDir === 'asc' ? (av as number) - (bv as number) : (bv as number) - (av as number);
     });
-
     return limit === 'all' ? sorted : sorted.slice(0, parseInt(limit));
-  }, [activeCampaign, search, limit, sortKey, sortDir]);
+  }, [filteredPublishers, limit, sortKey, sortDir]);
 
+  // KPIs reflect the publisher filter.
+  // Reach is a campaign-wide unique-user count from AdStir and cannot be decomposed per-publisher,
+  // so it only updates when the filter would zero out publishers entirely.
   const totals = useMemo(() => {
-    if (!activeCampaign) return { impressions: 0, completedViews: 0, completedViewsPct: 0, clicks: 0, reach: 0, frequency: 0 };
-    const impressions = activeCampaign.totalImpressions;
-    const completedViews = activeCampaign.totalCompletedViews;
-    const reach = reachByCampaign?.get(activeCampaign.campaign) || 0;
+    const impressions = filteredPublishers.reduce((s, p) => s + p.impressions, 0);
+    const completedViews = filteredPublishers.reduce((s, p) => s + p.completedViews, 0);
+    const clicks = filteredPublishers.reduce((s, p) => s + p.clicks, 0);
+    const campaignReach = activeCampaign ? (reachByCampaign?.get(activeCampaign.campaign) || 0) : 0;
+    const reach = filteredPublishers.length === 0 ? 0 : campaignReach;
     return {
       impressions,
       completedViews,
       completedViewsPct: impressions > 0 ? (completedViews / impressions) * 100 : 0,
-      clicks: activeCampaign.totalClicks,
+      clicks,
       reach,
       frequency: reach > 0 ? impressions / reach : 0,
     };
-  }, [activeCampaign, reachByCampaign]);
+  }, [filteredPublishers, activeCampaign, reachByCampaign]);
 
   function toggleSort(k: SortKey) {
     if (sortKey === k) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -117,13 +123,6 @@ export function PublisherNetworkDelivery({ campaigns, selectedCampaign, accentCo
             />
             Show Clicks
           </label>
-          <input
-            type="text"
-            placeholder="Search publishers..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="px-3 py-1.5 text-xs border border-[#E2E8F0] focus:outline-none focus:border-[#CBD5E0] w-56"
-          />
           <div className="flex items-center gap-1 text-xs">
             <span className="text-[#A0AEC0] mr-1">Show:</span>
             {(['20', '50', '100', 'all'] as const).map(opt => (
@@ -177,7 +176,7 @@ export function PublisherNetworkDelivery({ campaigns, selectedCampaign, accentCo
             ) : !activeCampaign ? (
               <tr><td colSpan={colSpan} className="px-6 py-12 text-center text-xs text-[#A0AEC0]">Select a campaign to view publisher delivery.</td></tr>
             ) : sortedFiltered.length === 0 ? (
-              <tr><td colSpan={colSpan} className="px-6 py-12 text-center text-xs text-[#A0AEC0]">No publishers match your search.</td></tr>
+              <tr><td colSpan={colSpan} className="px-6 py-12 text-center text-xs text-[#A0AEC0]">No publishers match the current filter.</td></tr>
             ) : (
               sortedFiltered.map(p => {
                 const cvPct = p.impressions > 0 ? (p.completedViews / p.impressions) * 100 : 0;
