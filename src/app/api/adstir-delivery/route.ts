@@ -4,11 +4,11 @@ const { ImapFlow } = require('imapflow');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { simpleParser } = require('mailparser');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
-const AdmZip = require('adm-zip');
+const yauzl = require('yauzl');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const zipcodes = require('zipcodes');
 import { pipeline } from 'stream/promises';
-import { createWriteStream, readFileSync, unlinkSync, existsSync } from 'fs';
+import { createWriteStream, unlinkSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { createInterface } from 'readline';
@@ -54,8 +54,8 @@ let deliveryCache: DeliveryData = { campaigns: [], reportDate: '', emailDate: ''
 let cacheTimestamp = 0;
 let fetchInProgress = false;
 let cronStarted = false;
-const CACHE_TTL = 6 * 60 * 60 * 1000;
-const DAILY_INTERVAL = 6 * 60 * 60 * 1000;
+const CACHE_TTL = 24 * 60 * 60 * 1000;
+const DAILY_INTERVAL = 24 * 60 * 60 * 1000;
 
 function getConfig() {
   return {
@@ -115,7 +115,10 @@ async function findLatestReportEmail(): Promise<{ url: string; emailDate: string
 }
 
 async function downloadAndExtract(url: string): Promise<string> {
-  const zipPath = join(tmpdir(), `adstir_delivery_${Date.now()}.zip`);
+  const stamp = Date.now();
+  const zipPath = join(tmpdir(), `adstir_delivery_${stamp}.zip`);
+  const csvPath = join(tmpdir(), `adstir_delivery_${stamp}.csv`);
+
   const response = await fetch(url);
   if (!response.ok || !response.body) throw new Error(`Download failed: ${response.status}`);
 
@@ -124,22 +127,49 @@ async function downloadAndExtract(url: string): Promise<string> {
     createWriteStream(zipPath)
   );
 
-  const zip = new AdmZip(zipPath);
-  const entries = zip.getEntries();
-  const csvEntry = entries.find((e: { entryName: string }) => e.entryName.toLowerCase().endsWith('.csv'));
-  if (!csvEntry) throw new Error('No CSV file found in archive');
+  await new Promise<void>((resolve, reject) => {
+    yauzl.open(zipPath, { lazyEntries: true }, (err: Error | null, zipfile: unknown) => {
+      if (err || !zipfile) return reject(err || new Error('Failed to open zip'));
+      const zf = zipfile as {
+        readEntry: () => void;
+        on: (event: string, cb: (...args: unknown[]) => void) => void;
+        close: () => void;
+        openReadStream: (entry: unknown, cb: (e: Error | null, s: NodeJS.ReadableStream) => void) => void;
+      };
 
-  const csvPath = join(tmpdir(), `adstir_delivery_${Date.now()}.csv`);
-  zip.extractEntryTo(csvEntry.entryName, tmpdir(), false, true, false, `adstir_delivery_${Date.now()}.csv`);
-
-  const extractedPath = join(tmpdir(), `adstir_delivery_${Date.now()}.csv`);
-  if (!existsSync(extractedPath)) {
-    const buffer = csvEntry.getData();
-    require('fs').writeFileSync(csvPath, buffer);
-  }
+      let found = false;
+      zf.readEntry();
+      zf.on('entry', (entryArg: unknown) => {
+        const entry = entryArg as { fileName: string };
+        if (!entry.fileName.toLowerCase().endsWith('.csv')) {
+          zf.readEntry();
+          return;
+        }
+        found = true;
+        zf.openReadStream(entry, (streamErr, readStream) => {
+          if (streamErr) {
+            zf.close();
+            return reject(streamErr);
+          }
+          const writeStream = createWriteStream(csvPath);
+          readStream.on('error', (e) => { zf.close(); reject(e); });
+          writeStream.on('error', (e) => { zf.close(); reject(e); });
+          writeStream.on('finish', () => { zf.close(); resolve(); });
+          readStream.pipe(writeStream);
+        });
+      });
+      zf.on('end', () => {
+        if (!found) {
+          zf.close();
+          reject(new Error('No CSV file found in archive'));
+        }
+      });
+      zf.on('error', (errArg: unknown) => reject(errArg as Error));
+    });
+  });
 
   try { unlinkSync(zipPath); } catch {}
-  return existsSync(extractedPath) ? extractedPath : csvPath;
+  return csvPath;
 }
 
 function parseCsvLine(line: string): string[] {
@@ -296,6 +326,7 @@ async function backgroundRefresh() {
     deliveryCache = data;
     cacheTimestamp = Date.now();
     console.log(`[AdStir Delivery Cron] Refreshed ${data.campaigns.length} campaigns at ${new Date().toISOString()}`);
+    if (typeof global.gc === 'function') global.gc();
   } catch (err) {
     console.error('[AdStir Delivery Cron] Failed:', err);
   } finally {
@@ -308,7 +339,7 @@ function startCron() {
   cronStarted = true;
   setInterval(backgroundRefresh, DAILY_INTERVAL);
   setTimeout(backgroundRefresh, 10000);
-  console.log('[AdStir Delivery Cron] Scheduled (every 6 hours)');
+  console.log('[AdStir Delivery Cron] Scheduled (daily)');
 }
 
 startCron();
