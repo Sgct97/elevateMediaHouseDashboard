@@ -13,10 +13,12 @@ type Metric = 'clicks' | 'impressions' | 'completedViews';
 
 interface Props {
   campaigns: CampaignDelivery[];
-  selectedCampaign: string;
+  selectedCampaigns: Set<string>;
   accentColor: string;
   loading: boolean;
 }
+
+const NONE_SENTINEL = '__none__';
 
 const metricLabels: Record<Metric, string> = {
   clicks: 'Clicks',
@@ -30,7 +32,7 @@ function hexToRgb(hex: string): [number, number, number] {
   return [(bigint >> 16) & 255, (bigint >> 8) & 255, bigint & 255];
 }
 
-export function ZipHeatmap({ campaigns, selectedCampaign, accentColor, loading }: Props) {
+export function ZipHeatmap({ campaigns, selectedCampaigns, accentColor, loading }: Props) {
   const [metric, setMetric] = useState<Metric>('clicks');
   const [leafletReady, setLeafletReady] = useState(false);
 
@@ -39,15 +41,48 @@ export function ZipHeatmap({ campaigns, selectedCampaign, accentColor, loading }
     import('leaflet/dist/leaflet.css').then(() => setLeafletReady(true));
   }, []);
 
-  const activeCampaign = useMemo(
-    () => campaigns.find(c => c.campaign === selectedCampaign),
-    [campaigns, selectedCampaign]
-  );
+  const activeCampaigns = useMemo<CampaignDelivery[]>(() => {
+    if (selectedCampaigns.size === 0) return campaigns;
+    if (selectedCampaigns.has(NONE_SENTINEL)) return [];
+    return campaigns.filter(c => selectedCampaigns.has(c.campaign));
+  }, [campaigns, selectedCampaigns]);
+
+  // Aggregate zips across all active campaigns, summing metrics by zip code.
+  // Preserve the first non-null lat/lng/city/state we encounter.
+  const aggregatedZips = useMemo<ZipAggregate[]>(() => {
+    if (activeCampaigns.length === 0) return [];
+    const acc = new Map<string, ZipAggregate>();
+    for (const camp of activeCampaigns) {
+      for (const z of camp.zips) {
+        const existing = acc.get(z.zip);
+        if (existing) {
+          existing.impressions += z.impressions;
+          existing.completedViews += z.completedViews;
+          existing.clicks += z.clicks;
+          if (existing.lat == null && z.lat != null) existing.lat = z.lat;
+          if (existing.lng == null && z.lng != null) existing.lng = z.lng;
+          if (!existing.city && z.city) existing.city = z.city;
+          if (!existing.state && z.state) existing.state = z.state;
+        } else {
+          acc.set(z.zip, {
+            zip: z.zip,
+            impressions: z.impressions,
+            completedViews: z.completedViews,
+            clicks: z.clicks,
+            lat: z.lat,
+            lng: z.lng,
+            city: z.city,
+            state: z.state,
+          });
+        }
+      }
+    }
+    return Array.from(acc.values());
+  }, [activeCampaigns]);
 
   const plottableZips = useMemo(() => {
-    if (!activeCampaign) return [] as ZipAggregate[];
-    return activeCampaign.zips.filter(z => z.lat != null && z.lng != null && z[metric] > 0);
-  }, [activeCampaign, metric]);
+    return aggregatedZips.filter(z => z.lat != null && z.lng != null && z[metric] > 0);
+  }, [aggregatedZips, metric]);
 
   const maxValue = useMemo(
     () => plottableZips.reduce((m, z) => Math.max(m, z[metric]), 0) || 1,
@@ -83,9 +118,14 @@ export function ZipHeatmap({ campaigns, selectedCampaign, accentColor, loading }
           <h3 className="text-sm font-medium" style={{ color: accentColor }}>
             Geographic Delivery Heatmap
           </h3>
-          {activeCampaign && (
+          {activeCampaigns.length > 0 && (
             <p className="text-xs text-[#718096] mt-0.5">
-              {activeCampaign.campaign} · {plottableZips.length.toLocaleString()} zip codes · {totalForMetric.toLocaleString()} {metricLabels[metric].toLowerCase()}
+              {activeCampaigns.length === 1
+                ? activeCampaigns[0].campaign
+                : selectedCampaigns.size === 0
+                ? `All campaigns (${activeCampaigns.length})`
+                : `${activeCampaigns.length} campaigns selected`}
+              {' · '}{plottableZips.length.toLocaleString()} zip codes · {totalForMetric.toLocaleString()} {metricLabels[metric].toLowerCase()}
             </p>
           )}
         </div>
@@ -111,10 +151,10 @@ export function ZipHeatmap({ campaigns, selectedCampaign, accentColor, loading }
       <div className="relative" style={{ height: 520 }}>
         {loading ? (
           <div className="absolute inset-0 flex items-center justify-center text-xs text-[#A0AEC0]">Loading delivery data...</div>
-        ) : !activeCampaign ? (
-          <div className="absolute inset-0 flex items-center justify-center text-xs text-[#A0AEC0]">Select a campaign to view the geographic heatmap.</div>
+        ) : activeCampaigns.length === 0 ? (
+          <div className="absolute inset-0 flex items-center justify-center text-xs text-[#A0AEC0]">Select one or more campaigns to view the geographic heatmap.</div>
         ) : plottableZips.length === 0 ? (
-          <div className="absolute inset-0 flex items-center justify-center text-xs text-[#A0AEC0]">No geographic data for this campaign.</div>
+          <div className="absolute inset-0 flex items-center justify-center text-xs text-[#A0AEC0]">No geographic data for the selected campaign(s).</div>
         ) : leafletReady ? (
           <MapContainer
             center={mapCenter}
@@ -157,7 +197,7 @@ export function ZipHeatmap({ campaigns, selectedCampaign, accentColor, loading }
         )}
       </div>
 
-      {activeCampaign && plottableZips.length > 0 && (
+      {activeCampaigns.length > 0 && plottableZips.length > 0 && (
         <div className="px-6 py-3 border-t border-[#E2E8F0] flex items-center gap-3 flex-wrap">
           <span className="text-[10px] uppercase tracking-wider text-[#A0AEC0]">Intensity</span>
           <div className="flex items-center gap-2">

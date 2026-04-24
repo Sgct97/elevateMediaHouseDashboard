@@ -32,6 +32,24 @@ function formatDate(dateStr: string | null): string {
   return date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: '2-digit' });
 }
 
+function extractUtmCampaign(url: string): string {
+  if (!url) return '';
+  try {
+    const q = url.split('?')[1];
+    if (!q) return '';
+    for (const pair of q.split('&')) {
+      const [rawKey, rawVal] = pair.split('=');
+      if (!rawKey || rawVal === undefined) continue;
+      if (rawKey.toLowerCase() === 'utm_campaign') {
+        try { return decodeURIComponent(rawVal); } catch { return rawVal; }
+      }
+    }
+  } catch {
+    return '';
+  }
+  return '';
+}
+
 interface InvoiceGroup {
   invoice: string;
   title: string;
@@ -78,8 +96,9 @@ export function LinkClicksPivot({
         campaignId: String(d['Campaign ID']),
       }));
 
-      // Collect all Link IDs and click data
+      // Collect all Link IDs, UTM campaign slugs per link, and click data
       const allLinkIds = new Set<number>();
+      const utmByLink = new Map<number, string>();
       const dropData: Array<{ campaignId: string; clicksByLink: Map<number, number> }> = [];
 
       for (const drop of sorted) {
@@ -87,6 +106,10 @@ export function LinkClicksPivot({
         const clicksByLink = new Map<number, number>();
         for (const url of urls) {
           allLinkIds.add(url.URLID);
+          if (!utmByLink.has(url.URLID)) {
+            const slug = extractUtmCampaign(url.URL);
+            if (slug) utmByLink.set(url.URLID, slug);
+          }
           clicksByLink.set(url.URLID, url.Clicks);
         }
         dropData.push({ campaignId: String(drop['Campaign ID']), clicksByLink });
@@ -95,7 +118,10 @@ export function LinkClicksPivot({
       const sortedLinkIds = Array.from(allLinkIds).sort((a, b) => a - b);
 
       const pivotRows = sortedLinkIds.map(linkId => {
-        const row: Record<string, unknown> = { 'Link ID': linkId };
+        const row: Record<string, unknown> = {
+          'Link ID': linkId,
+          'Campaign': utmByLink.get(linkId) ?? '',
+        };
         for (const dd of dropData) {
           row[`drop_${dd.campaignId}`] = dd.clicksByLink.get(linkId) ?? 0;
         }
@@ -180,6 +206,9 @@ export function LinkClicksPivot({
                       <th className="px-4 py-3 text-left text-xs font-semibold text-[#718096] uppercase tracking-wider whitespace-nowrap">
                         Link ID
                       </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-[#718096] uppercase tracking-wider whitespace-nowrap">
+                        Campaign
+                      </th>
                       {group.dropColumns.map((col, i) => (
                         <th
                           key={i}
@@ -214,6 +243,9 @@ export function LinkClicksPivot({
                       >
                         <td className="px-4 py-3 text-sm text-[#2D3748] font-medium">
                           {row['Link ID'] as number}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-[#4A5568] whitespace-nowrap">
+                          {(row['Campaign'] as string) || <span className="text-[#CBD5E0]">—</span>}
                         </td>
                         {group.dropColumns.map((col, j) => (
                           <td key={j} className="px-4 py-3 text-sm text-[#2D3748] text-right">

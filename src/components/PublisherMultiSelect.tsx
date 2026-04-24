@@ -8,9 +8,14 @@ interface Props {
   onChange: (next: Set<string>) => void;
   accentColor: string;
   disabled?: boolean;
+  /** Singular label for the entity being selected, e.g. 'publisher' or 'campaign'. Defaults to 'option'. */
+  entityLabel?: string;
+  /** Plural form of the entity label. Defaults to `${entityLabel}s`. */
+  entityLabelPlural?: string;
 }
 
-export function PublisherMultiSelect({ options, selected, onChange, accentColor, disabled }: Props) {
+export function PublisherMultiSelect({ options, selected, onChange, accentColor, disabled, entityLabel = 'option', entityLabelPlural }: Props) {
+  const pluralLabel = entityLabelPlural || `${entityLabel}s`;
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -81,7 +86,7 @@ export function PublisherMultiSelect({ options, selected, onChange, accentColor,
               type="text"
               value={query}
               onChange={e => setQuery(e.target.value)}
-              placeholder="Search publishers..."
+              placeholder={`Search ${pluralLabel}...`}
               className="w-full px-2 py-1.5 text-xs border border-[#E2E8F0] focus:outline-none focus:border-[#CBD5E0]"
               autoFocus
             />
@@ -109,7 +114,7 @@ export function PublisherMultiSelect({ options, selected, onChange, accentColor,
 
           <div className="max-h-[280px] overflow-auto">
             {filtered.length === 0 ? (
-              <div className="px-3 py-4 text-center text-xs text-[#A0AEC0]">No publishers match</div>
+              <div className="px-3 py-4 text-center text-xs text-[#A0AEC0]">No {pluralLabel} match</div>
             ) : (
               filtered.map(pub => {
                 const isChecked = selected.size === 0 ? true : selected.has(pub);

@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { PublisherNetworkDelivery } from './PublisherNetworkDelivery';
 import { ZipHeatmap } from './ZipHeatmap';
 import { PublisherMultiSelect } from './PublisherMultiSelect';
+import { PdfHeader } from './PdfHeader';
+import { usePdfExport } from '@/lib/usePdfExport';
 import { BrandConfig } from '@/lib/brands';
 import type { CampaignDelivery } from '@/app/api/adstir-delivery/route';
 import type { AdStirRecord } from '@/app/api/adstir/route';
@@ -15,12 +17,15 @@ interface CTVDashboardProps {
 export function CTVDashboard({ brand }: CTVDashboardProps) {
   const [deliveryData, setDeliveryData] = useState<CampaignDelivery[]>([]);
   const [deliveryEmailDate, setDeliveryEmailDate] = useState<string>('');
-  const [selectedDeliveryCampaign, setSelectedDeliveryCampaign] = useState<string>('');
+  const [selectedCampaigns, setSelectedCampaigns] = useState<Set<string>>(new Set());
   const [deliveryLoading, setDeliveryLoading] = useState(true);
   const [adstirData, setAdstirData] = useState<AdStirRecord[]>([]);
-  const [selectedPublishers, setSelectedPublishers] = useState<Set<string>>(new Set());
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const { reportRef, exportPdf, isExporting } = usePdfExport<HTMLDivElement>({
+    filename: 'CTV_Dashboard',
+  });
 
   const fetchDeliveryData = useCallback(async (refresh = false) => {
     try {
@@ -30,16 +35,13 @@ export function CTVDashboard({ brand }: CTVDashboardProps) {
       if (Array.isArray(json.campaigns)) {
         setDeliveryData(json.campaigns);
         setDeliveryEmailDate(json.emailDate || '');
-        if (json.campaigns.length > 0 && !selectedDeliveryCampaign) {
-          setSelectedDeliveryCampaign(json.campaigns[0].campaign);
-        }
       }
     } catch (err) {
       console.error('Error fetching delivery data:', err);
     } finally {
       setDeliveryLoading(false);
     }
-  }, [selectedDeliveryCampaign]);
+  }, []);
 
   const fetchAdstirData = useCallback(async (refresh = false) => {
     try {
@@ -85,25 +87,10 @@ export function CTVDashboard({ brand }: CTVDashboardProps) {
   const campaignOptions = useMemo(
     () =>
       deliveryData
-        .map(c => ({ value: c.campaign, label: `${c.advertiser ? c.advertiser + ' — ' : ''}${c.campaign}` }))
-        .sort((a, b) => a.label.localeCompare(b.label)),
+        .map(c => c.campaign)
+        .sort((a, b) => a.localeCompare(b)),
     [deliveryData]
   );
-
-  const activeCampaign = useMemo(
-    () => deliveryData.find(c => c.campaign === selectedDeliveryCampaign),
-    [deliveryData, selectedDeliveryCampaign]
-  );
-
-  const publisherOptions = useMemo(
-    () => (activeCampaign ? activeCampaign.publishers.map(p => p.publisher).sort((a, b) => a.localeCompare(b)) : []),
-    [activeCampaign]
-  );
-
-  // Reset publisher selection when campaign changes
-  useEffect(() => {
-    setSelectedPublishers(new Set());
-  }, [selectedDeliveryCampaign]);
 
   return (
     <div className="min-h-screen bg-[#F7F8FA]">
@@ -118,6 +105,14 @@ export function CTVDashboard({ brand }: CTVDashboardProps) {
               <span className="text-xs text-[#718096]">Updated {lastUpdated.toLocaleTimeString()}</span>
             )}
             <button
+              onClick={exportPdf}
+              disabled={isExporting || deliveryLoading}
+              className="px-4 py-2 text-xs font-medium text-white disabled:opacity-50"
+              style={{ backgroundColor: brand.primaryColor }}
+            >
+              {isExporting ? 'Generating PDF...' : 'Download PDF'}
+            </button>
+            <button
               onClick={refreshAll}
               disabled={isRefreshing}
               className="px-4 py-2 text-xs font-medium text-white disabled:opacity-50"
@@ -129,7 +124,19 @@ export function CTVDashboard({ brand }: CTVDashboardProps) {
         </div>
       </header>
 
-      <div className="p-6 space-y-6 max-w-[1600px] mx-auto">
+      <div ref={reportRef} className="p-6 space-y-6 max-w-[1600px] mx-auto bg-[#F7F8FA]">
+        <PdfHeader
+          brand={brand}
+          title="CTV Dashboard Report"
+          subtitle={
+            selectedCampaigns.size === 0
+              ? `All campaigns (${campaignOptions.length})`
+              : selectedCampaigns.has('__none__')
+              ? 'No campaigns selected'
+              : `${selectedCampaigns.size} campaign${selectedCampaigns.size === 1 ? '' : 's'} selected`
+          }
+        />
+
         <div className="bg-white border border-[#E2E8F0]">
           <div className="px-6 py-4 border-b border-[#E2E8F0] flex items-start justify-between flex-wrap gap-3">
             <div>
@@ -140,47 +147,31 @@ export function CTVDashboard({ brand }: CTVDashboardProps) {
                   : 'Source: Daily Impression Network Report'}
               </p>
             </div>
-            <div className="flex flex-col items-end gap-2">
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-[#A0AEC0] w-[80px] text-right">Campaign:</label>
-                <select
-                  value={selectedDeliveryCampaign}
-                  onChange={e => setSelectedDeliveryCampaign(e.target.value)}
-                  className="px-3 py-1.5 text-xs border border-[#E2E8F0] focus:outline-none focus:border-[#CBD5E0] min-w-[320px] max-w-[480px]"
-                  disabled={deliveryLoading || campaignOptions.length === 0}
-                >
-                  {campaignOptions.length === 0 && <option>Loading campaigns...</option>}
-                  {campaignOptions.map(o => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-[#A0AEC0] w-[80px] text-right">Publishers:</label>
-                <PublisherMultiSelect
-                  options={publisherOptions}
-                  selected={selectedPublishers}
-                  onChange={setSelectedPublishers}
-                  accentColor={brand.primaryColor}
-                  disabled={deliveryLoading || publisherOptions.length === 0}
-                />
-              </div>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-[#A0AEC0] text-right">Campaigns:</label>
+              <PublisherMultiSelect
+                options={campaignOptions}
+                selected={selectedCampaigns}
+                onChange={setSelectedCampaigns}
+                accentColor={brand.primaryColor}
+                disabled={deliveryLoading || campaignOptions.length === 0}
+                entityLabel="campaign"
+              />
             </div>
           </div>
         </div>
 
         <PublisherNetworkDelivery
           campaigns={deliveryData}
-          selectedCampaign={selectedDeliveryCampaign}
+          selectedCampaigns={selectedCampaigns}
           accentColor={brand.primaryColor}
           loading={deliveryLoading}
           reachByCampaign={reachByCampaign}
-          selectedPublishers={selectedPublishers}
         />
 
         <ZipHeatmap
           campaigns={deliveryData}
-          selectedCampaign={selectedDeliveryCampaign}
+          selectedCampaigns={selectedCampaigns}
           accentColor={brand.primaryColor}
           loading={deliveryLoading}
         />

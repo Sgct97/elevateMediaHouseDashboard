@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { Header } from './Header';
 import { GroundTruthPacing } from './GroundTruthPacing';
 import { AdStirPacing } from './AdStirPacing';
+import { PdfHeader } from './PdfHeader';
+import { usePdfExport } from '@/lib/usePdfExport';
 import { BrandConfig } from '@/lib/brands';
 import type { PacingCampaign } from '@/app/api/groundtruth/pacing/route';
 import type { AdStirPacingRecord } from '@/app/api/adstir-pacing/route';
@@ -20,6 +22,10 @@ export function PacingDashboard({ brand }: PacingDashboardProps) {
   const [adstirReportDate, setAdstirReportDate] = useState('');
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const { reportRef, exportPdf, isExporting } = usePdfExport<HTMLDivElement>({
+    filename: 'Pacing_Report',
+  });
 
   const fetchGtPacingData = useCallback(async (refresh = false) => {
     try {
@@ -80,7 +86,7 @@ export function PacingDashboard({ brand }: PacingDashboardProps) {
       />
 
       <main className="px-6 py-8 max-w-[1400px] mx-auto">
-        <div className="flex items-start justify-between mb-8">
+        <div className="flex items-start justify-between mb-8 gap-4 flex-wrap">
           <div>
             <h1 className="text-2xl font-light text-[#2D3748] mb-1">
               Pacing Report
@@ -90,9 +96,19 @@ export function PacingDashboard({ brand }: PacingDashboardProps) {
               style={{ backgroundColor: brand.primaryColor }}
             />
           </div>
+          <button
+            onClick={exportPdf}
+            disabled={isExporting || (gtPacingLoading && adstirPacingLoading)}
+            className="px-4 py-2 text-sm font-medium text-white disabled:opacity-50 transition-opacity"
+            style={{ backgroundColor: brand.primaryColor }}
+          >
+            {isExporting ? 'Generating PDF...' : 'Download PDF'}
+          </button>
         </div>
 
-        <div className="space-y-6">
+        <div ref={reportRef} className="space-y-6 bg-[#FAFBFC]">
+          <PdfHeader brand={brand} title="Pacing Report" />
+
           <AdStirPacing
             data={adstirPacingData}
             loading={adstirPacingLoading}
