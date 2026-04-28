@@ -2,14 +2,27 @@
 
 import { useMemo, useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
+import type { Feature, FeatureCollection, Geometry } from 'geojson';
 import type { CampaignDelivery, ZipAggregate } from '@/app/api/adstir-delivery/route';
 
 const MapContainer = dynamic(() => import('react-leaflet').then(m => m.MapContainer), { ssr: false });
 const TileLayer = dynamic(() => import('react-leaflet').then(m => m.TileLayer), { ssr: false });
 const CircleMarker = dynamic(() => import('react-leaflet').then(m => m.CircleMarker), { ssr: false });
+const GeoJSON = dynamic(() => import('react-leaflet').then(m => m.GeoJSON), { ssr: false });
 const Tooltip = dynamic(() => import('react-leaflet').then(m => m.Tooltip), { ssr: false });
 
 type Metric = 'clicks' | 'impressions' | 'completedViews';
+type MapMode = 'dots' | 'boundaries';
+
+interface BoundaryProperties {
+  ZCTA5?: string;
+  GEOID?: string;
+  BASENAME?: string;
+  metrics?: ZipAggregate;
+}
+
+type BoundaryFeature = Feature<Geometry, BoundaryProperties>;
+type BoundaryFeatureCollection = FeatureCollection<Geometry, BoundaryProperties>;
 
 interface Props {
   campaigns: CampaignDelivery[];
@@ -34,7 +47,11 @@ function hexToRgb(hex: string): [number, number, number] {
 
 export function ZipHeatmap({ campaigns, selectedCampaigns, accentColor, loading }: Props) {
   const [metric, setMetric] = useState<Metric>('clicks');
+  const [mapMode, setMapMode] = useState<MapMode>('dots');
   const [leafletReady, setLeafletReady] = useState(false);
+  const [boundaryData, setBoundaryData] = useState<BoundaryFeatureCollection | null>(null);
+  const [boundaryLoading, setBoundaryLoading] = useState(false);
+  const [boundaryError, setBoundaryError] = useState('');
 
   useEffect(() => {
     // @ts-expect-error - CSS module has no type declarations
@@ -84,6 +101,65 @@ export function ZipHeatmap({ campaigns, selectedCampaigns, accentColor, loading 
     return aggregatedZips.filter(z => z.lat != null && z.lng != null && z[metric] > 0);
   }, [aggregatedZips, metric]);
 
+  const boundaryRequestKey = useMemo(
+    () => plottableZips.map(z => z.zip).sort().join(','),
+    [plottableZips]
+  );
+
+  const zipMetricsByCode = useMemo(() => {
+    const map = new Map<string, ZipAggregate>();
+    for (const zip of plottableZips) map.set(zip.zip, zip);
+    return map;
+  }, [plottableZips]);
+
+  useEffect(() => {
+    if (mapMode !== 'boundaries' || boundaryRequestKey.length === 0) return;
+
+    const controller = new AbortController();
+    setBoundaryLoading(true);
+    setBoundaryError('');
+
+    fetch('/api/zcta-boundaries', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ zips: boundaryRequestKey.split(',') }),
+      signal: controller.signal,
+    })
+      .then(res => {
+        if (!res.ok) throw new Error(`Boundary lookup failed: ${res.status}`);
+        return res.json();
+      })
+      .then((data: BoundaryFeatureCollection) => setBoundaryData(data))
+      .catch(err => {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        console.error('Boundary lookup failed:', err);
+        setBoundaryError('ZIP boundaries could not be loaded.');
+        setBoundaryData(null);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setBoundaryLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [mapMode, boundaryRequestKey]);
+
+  const boundaryGeoJson = useMemo<BoundaryFeatureCollection>(() => {
+    const features = (boundaryData?.features || [])
+      .map(feature => {
+        const props = feature.properties || {};
+        const zip = props.ZCTA5 || props.GEOID || props.BASENAME || '';
+        const metrics = zipMetricsByCode.get(zip);
+        if (!metrics || metrics[metric] <= 0) return null;
+        return {
+          ...feature,
+          properties: { ...props, metrics },
+        } as BoundaryFeature;
+      })
+      .filter((feature): feature is BoundaryFeature => Boolean(feature));
+
+    return { type: 'FeatureCollection', features };
+  }, [boundaryData, zipMetricsByCode, metric]);
+
   const maxValue = useMemo(
     () => plottableZips.reduce((m, z) => Math.max(m, z[metric]), 0) || 1,
     [plottableZips, metric]
@@ -129,22 +205,41 @@ export function ZipHeatmap({ campaigns, selectedCampaigns, accentColor, loading 
             </p>
           )}
         </div>
-        <div className="flex items-center gap-1 text-xs">
-          <span className="text-[#A0AEC0] mr-1">Metric:</span>
-          {(['clicks', 'impressions', 'completedViews'] as Metric[]).map(m => (
-            <button
-              key={m}
-              onClick={() => setMetric(m)}
-              className="px-2.5 py-1 border transition-colors"
-              style={{
-                borderColor: metric === m ? accentColor : '#E2E8F0',
-                color: metric === m ? accentColor : '#718096',
-                backgroundColor: metric === m ? `${accentColor}10` : 'white',
-              }}
-            >
-              {metricLabels[m]}
-            </button>
-          ))}
+        <div className="flex items-center gap-4 flex-wrap justify-end">
+          <div className="flex items-center gap-1 text-xs">
+            <span className="text-[#A0AEC0] mr-1">View:</span>
+            {(['dots', 'boundaries'] as MapMode[]).map(mode => (
+              <button
+                key={mode}
+                onClick={() => setMapMode(mode)}
+                className="px-2.5 py-1 border transition-colors"
+                style={{
+                  borderColor: mapMode === mode ? accentColor : '#E2E8F0',
+                  color: mapMode === mode ? accentColor : '#718096',
+                  backgroundColor: mapMode === mode ? `${accentColor}10` : 'white',
+                }}
+              >
+                {mode === 'dots' ? 'Dots' : 'ZIP Borders'}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1 text-xs">
+            <span className="text-[#A0AEC0] mr-1">Metric:</span>
+            {(['clicks', 'impressions', 'completedViews'] as Metric[]).map(m => (
+              <button
+                key={m}
+                onClick={() => setMetric(m)}
+                className="px-2.5 py-1 border transition-colors"
+                style={{
+                  borderColor: metric === m ? accentColor : '#E2E8F0',
+                  color: metric === m ? accentColor : '#718096',
+                  backgroundColor: metric === m ? `${accentColor}10` : 'white',
+                }}
+              >
+                {metricLabels[m]}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -155,8 +250,15 @@ export function ZipHeatmap({ campaigns, selectedCampaigns, accentColor, loading 
           <div className="absolute inset-0 flex items-center justify-center text-xs text-[#A0AEC0]">Select one or more campaigns to view the geographic heatmap.</div>
         ) : plottableZips.length === 0 ? (
           <div className="absolute inset-0 flex items-center justify-center text-xs text-[#A0AEC0]">No geographic data for the selected campaign(s).</div>
+        ) : mapMode === 'boundaries' && boundaryLoading ? (
+          <div className="absolute inset-0 flex items-center justify-center text-xs text-[#A0AEC0]">Loading ZIP boundaries...</div>
+        ) : mapMode === 'boundaries' && boundaryError ? (
+          <div className="absolute inset-0 flex items-center justify-center text-xs text-[#A0AEC0]">{boundaryError}</div>
+        ) : mapMode === 'boundaries' && boundaryGeoJson.features.length === 0 ? (
+          <div className="absolute inset-0 flex items-center justify-center text-xs text-[#A0AEC0]">No ZIP boundaries found for the selected campaign(s).</div>
         ) : leafletReady ? (
           <MapContainer
+            key={`${mapMode}-${boundaryRequestKey}`}
             center={mapCenter}
             zoom={plottableZips.length > 500 ? 4 : 6}
             style={{ height: '100%', width: '100%' }}
@@ -166,31 +268,60 @@ export function ZipHeatmap({ campaigns, selectedCampaigns, accentColor, loading 
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
               url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
             />
-            {plottableZips.map(z => {
-              const intensity = z[metric] / maxValue;
-              const radius = 4 + Math.sqrt(intensity) * 14;
-              const fill = `rgba(${r},${g},${b},${0.25 + intensity * 0.55})`;
-              const stroke = `rgba(${r},${g},${b},${0.6 + intensity * 0.4})`;
-              return (
-                <CircleMarker
-                  key={z.zip}
-                  center={[z.lat!, z.lng!]}
-                  radius={radius}
-                  pathOptions={{ color: stroke, fillColor: fill, fillOpacity: 1, weight: 1 }}
-                >
-                  <Tooltip direction="top" offset={[0, -4]}>
-                    <div className="text-xs">
-                      <div className="font-medium text-[#2D3748]">
-                        {z.zip}{z.city ? ` · ${z.city}, ${z.state}` : ''}
+            {mapMode === 'boundaries' ? (
+              <GeoJSON
+                key={`${metric}-${boundaryRequestKey}`}
+                data={boundaryGeoJson}
+                style={(feature) => {
+                  const z = feature?.properties?.metrics;
+                  const intensity = z ? z[metric] / maxValue : 0;
+                  return {
+                    color: `rgba(${r},${g},${b},0.9)`,
+                    weight: 1.25,
+                    fillColor: `rgba(${r},${g},${b},${0.18 + intensity * 0.62})`,
+                    fillOpacity: 0.8,
+                  };
+                }}
+                onEachFeature={(feature, layer) => {
+                  const z = feature.properties?.metrics;
+                  if (!z) return;
+                  layer.bindTooltip(
+                    `<div>${z[metric].toLocaleString()}</div>`,
+                    {
+                      permanent: true,
+                      direction: 'center',
+                      className: 'zcta-metric-label',
+                    }
+                  );
+                }}
+              />
+            ) : (
+              plottableZips.map(z => {
+                const intensity = z[metric] / maxValue;
+                const radius = 4 + Math.sqrt(intensity) * 14;
+                const fill = `rgba(${r},${g},${b},${0.25 + intensity * 0.55})`;
+                const stroke = `rgba(${r},${g},${b},${0.6 + intensity * 0.4})`;
+                return (
+                  <CircleMarker
+                    key={z.zip}
+                    center={[z.lat!, z.lng!]}
+                    radius={radius}
+                    pathOptions={{ color: stroke, fillColor: fill, fillOpacity: 1, weight: 1 }}
+                  >
+                    <Tooltip direction="top" offset={[0, -4]}>
+                      <div className="text-xs">
+                        <div className="font-medium text-[#2D3748]">
+                          {z.zip}{z.city ? ` · ${z.city}, ${z.state}` : ''}
+                        </div>
+                        <div className="text-[#718096] mt-0.5">
+                          {z.impressions.toLocaleString()} imp · {z.clicks.toLocaleString()} clicks · {z.completedViews.toLocaleString()} CV
+                        </div>
                       </div>
-                      <div className="text-[#718096] mt-0.5">
-                        {z.impressions.toLocaleString()} imp · {z.clicks.toLocaleString()} clicks · {z.completedViews.toLocaleString()} CV
-                      </div>
-                    </div>
-                  </Tooltip>
-                </CircleMarker>
-              );
-            })}
+                    </Tooltip>
+                  </CircleMarker>
+                );
+              })
+            )}
           </MapContainer>
         ) : (
           <div className="absolute inset-0 flex items-center justify-center text-xs text-[#A0AEC0]">Loading map...</div>
