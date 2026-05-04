@@ -11,7 +11,6 @@ const CircleMarker = dynamic(() => import('react-leaflet').then(m => m.CircleMar
 const GeoJSON = dynamic(() => import('react-leaflet').then(m => m.GeoJSON), { ssr: false });
 const Tooltip = dynamic(() => import('react-leaflet').then(m => m.Tooltip), { ssr: false });
 
-type Metric = 'clicks' | 'impressions' | 'completedViews';
 type MapMode = 'dots' | 'boundaries';
 
 interface BoundaryProperties {
@@ -34,12 +33,6 @@ interface Props {
 const NONE_SENTINEL = '__none__';
 const BOUNDARY_RENDER_LIMIT = 250;
 
-const metricLabels: Record<Metric, string> = {
-  clicks: 'Clicks',
-  impressions: 'Impressions',
-  completedViews: 'Completed Views',
-};
-
 function hexToRgb(hex: string): [number, number, number] {
   const m = hex.replace('#', '');
   const bigint = parseInt(m.length === 3 ? m.split('').map(c => c + c).join('') : m, 16);
@@ -47,7 +40,6 @@ function hexToRgb(hex: string): [number, number, number] {
 }
 
 export function ZipHeatmap({ campaigns, selectedCampaigns, accentColor, loading }: Props) {
-  const [metric, setMetric] = useState<Metric>('clicks');
   const [mapMode, setMapMode] = useState<MapMode>('dots');
   const [leafletReady, setLeafletReady] = useState(false);
   const [boundaryData, setBoundaryData] = useState<BoundaryFeatureCollection | null>(null);
@@ -99,14 +91,14 @@ export function ZipHeatmap({ campaigns, selectedCampaigns, accentColor, loading 
   }, [activeCampaigns]);
 
   const plottableZips = useMemo(() => {
-    return aggregatedZips.filter(z => z.lat != null && z.lng != null && z[metric] > 0);
-  }, [aggregatedZips, metric]);
+    return aggregatedZips.filter(z => z.lat != null && z.lng != null && z.impressions > 0);
+  }, [aggregatedZips]);
 
   const boundaryZips = useMemo(() => {
     return [...plottableZips]
-      .sort((a, b) => b[metric] - a[metric])
+      .sort((a, b) => b.impressions - a.impressions)
       .slice(0, BOUNDARY_RENDER_LIMIT);
-  }, [plottableZips, metric]);
+  }, [plottableZips]);
 
   const boundaryRequestKey = useMemo(
     () => boundaryZips.map(z => z.zip).sort().join(','),
@@ -156,7 +148,7 @@ export function ZipHeatmap({ campaigns, selectedCampaigns, accentColor, loading 
         const props = feature.properties || {};
         const zip = props.ZCTA5 || props.GEOID || props.BASENAME || '';
         const metrics = zipMetricsByCode.get(zip);
-        if (!metrics || metrics[metric] <= 0) return null;
+        if (!metrics || metrics.impressions <= 0) return null;
         return {
           ...feature,
           properties: { ...props, metrics },
@@ -165,11 +157,11 @@ export function ZipHeatmap({ campaigns, selectedCampaigns, accentColor, loading 
       .filter((feature): feature is BoundaryFeature => Boolean(feature));
 
     return { type: 'FeatureCollection', features };
-  }, [boundaryData, zipMetricsByCode, metric]);
+  }, [boundaryData, zipMetricsByCode]);
 
   const maxValue = useMemo(
-    () => plottableZips.reduce((m, z) => Math.max(m, z[metric]), 0) || 1,
-    [plottableZips, metric]
+    () => plottableZips.reduce((m, z) => Math.max(m, z.impressions), 0) || 1,
+    [plottableZips]
   );
 
   const [r, g, b] = useMemo(() => hexToRgb(accentColor), [accentColor]);
@@ -182,8 +174,8 @@ export function ZipHeatmap({ campaigns, selectedCampaigns, accentColor, loading 
   }, [plottableZips]);
 
   const totalForMetric = useMemo(
-    () => plottableZips.reduce((s, z) => s + z[metric], 0),
-    [plottableZips, metric]
+    () => plottableZips.reduce((s, z) => s + z.impressions, 0),
+    [plottableZips]
   );
 
   function legendStops() {
@@ -208,9 +200,9 @@ export function ZipHeatmap({ campaigns, selectedCampaigns, accentColor, loading 
                 : selectedCampaigns.size === 0
                 ? `All campaigns (${activeCampaigns.length})`
                 : `${activeCampaigns.length} campaigns selected`}
-              {' · '}{plottableZips.length.toLocaleString()} zip codes · {totalForMetric.toLocaleString()} {metricLabels[metric].toLowerCase()}
+              {' · '}{plottableZips.length.toLocaleString()} zip codes · {totalForMetric.toLocaleString()} impressions
               {mapMode === 'boundaries' && plottableZips.length > BOUNDARY_RENDER_LIMIT
-                ? ` · ZIP Borders showing top ${BOUNDARY_RENDER_LIMIT.toLocaleString()} by ${metricLabels[metric].toLowerCase()}`
+                ? ` · ZIP Borders showing top ${BOUNDARY_RENDER_LIMIT.toLocaleString()} by impressions`
                 : ''}
             </p>
           )}
@@ -230,23 +222,6 @@ export function ZipHeatmap({ campaigns, selectedCampaigns, accentColor, loading 
                 }}
               >
                 {mode === 'dots' ? 'Dots' : 'ZIP Borders'}
-              </button>
-            ))}
-          </div>
-          <div className="flex items-center gap-1 text-xs">
-            <span className="text-[#A0AEC0] mr-1">Metric:</span>
-            {(['clicks', 'impressions', 'completedViews'] as Metric[]).map(m => (
-              <button
-                key={m}
-                onClick={() => setMetric(m)}
-                className="px-2.5 py-1 border transition-colors"
-                style={{
-                  borderColor: metric === m ? accentColor : '#E2E8F0',
-                  color: metric === m ? accentColor : '#718096',
-                  backgroundColor: metric === m ? `${accentColor}10` : 'white',
-                }}
-              >
-                {metricLabels[m]}
               </button>
             ))}
           </div>
@@ -280,11 +255,11 @@ export function ZipHeatmap({ campaigns, selectedCampaigns, accentColor, loading 
             />
             {mapMode === 'boundaries' ? (
               <GeoJSON
-                key={`${metric}-${boundaryRequestKey}`}
+                key={boundaryRequestKey}
                 data={boundaryGeoJson}
                 style={(feature) => {
                   const z = feature?.properties?.metrics;
-                  const intensity = z ? z[metric] / maxValue : 0;
+                  const intensity = z ? z.impressions / maxValue : 0;
                   return {
                     color: `rgba(${r},${g},${b},0.9)`,
                     weight: 1.25,
@@ -296,7 +271,7 @@ export function ZipHeatmap({ campaigns, selectedCampaigns, accentColor, loading 
                   const z = feature.properties?.metrics;
                   if (!z) return;
                   layer.bindTooltip(
-                    `<div>${z[metric].toLocaleString()}</div>`,
+                    `<div>${z.impressions.toLocaleString()}</div>`,
                     {
                       permanent: true,
                       direction: 'center',
@@ -307,7 +282,7 @@ export function ZipHeatmap({ campaigns, selectedCampaigns, accentColor, loading 
               />
             ) : (
               plottableZips.map(z => {
-                const intensity = z[metric] / maxValue;
+                const intensity = z.impressions / maxValue;
                 const radius = 4 + Math.sqrt(intensity) * 14;
                 const fill = `rgba(${r},${g},${b},${0.25 + intensity * 0.55})`;
                 const stroke = `rgba(${r},${g},${b},${0.6 + intensity * 0.4})`;
@@ -324,7 +299,7 @@ export function ZipHeatmap({ campaigns, selectedCampaigns, accentColor, loading 
                           {z.zip}{z.city ? ` · ${z.city}, ${z.state}` : ''}
                         </div>
                         <div className="text-[#718096] mt-0.5">
-                          {z.impressions.toLocaleString()} imp · {z.clicks.toLocaleString()} clicks · {z.completedViews.toLocaleString()} CV
+                          {z.impressions.toLocaleString()} impressions
                         </div>
                       </div>
                     </Tooltip>
