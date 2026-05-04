@@ -32,6 +32,7 @@ interface Props {
 }
 
 const NONE_SENTINEL = '__none__';
+const BOUNDARY_RENDER_LIMIT = 250;
 
 const metricLabels: Record<Metric, string> = {
   clicks: 'Clicks',
@@ -101,16 +102,22 @@ export function ZipHeatmap({ campaigns, selectedCampaigns, accentColor, loading 
     return aggregatedZips.filter(z => z.lat != null && z.lng != null && z[metric] > 0);
   }, [aggregatedZips, metric]);
 
+  const boundaryZips = useMemo(() => {
+    return [...plottableZips]
+      .sort((a, b) => b[metric] - a[metric])
+      .slice(0, BOUNDARY_RENDER_LIMIT);
+  }, [plottableZips, metric]);
+
   const boundaryRequestKey = useMemo(
-    () => plottableZips.map(z => z.zip).sort().join(','),
-    [plottableZips]
+    () => boundaryZips.map(z => z.zip).sort().join(','),
+    [boundaryZips]
   );
 
   const zipMetricsByCode = useMemo(() => {
     const map = new Map<string, ZipAggregate>();
-    for (const zip of plottableZips) map.set(zip.zip, zip);
+    for (const zip of boundaryZips) map.set(zip.zip, zip);
     return map;
-  }, [plottableZips]);
+  }, [boundaryZips]);
 
   useEffect(() => {
     if (mapMode !== 'boundaries' || boundaryRequestKey.length === 0) return;
@@ -202,6 +209,9 @@ export function ZipHeatmap({ campaigns, selectedCampaigns, accentColor, loading 
                 ? `All campaigns (${activeCampaigns.length})`
                 : `${activeCampaigns.length} campaigns selected`}
               {' · '}{plottableZips.length.toLocaleString()} zip codes · {totalForMetric.toLocaleString()} {metricLabels[metric].toLowerCase()}
+              {mapMode === 'boundaries' && plottableZips.length > BOUNDARY_RENDER_LIMIT
+                ? ` · ZIP Borders showing top ${BOUNDARY_RENDER_LIMIT.toLocaleString()} by ${metricLabels[metric].toLowerCase()}`
+                : ''}
             </p>
           )}
         </div>
@@ -339,6 +349,11 @@ export function ZipHeatmap({ campaigns, selectedCampaigns, accentColor, loading 
               </div>
             ))}
           </div>
+          {mapMode === 'boundaries' && plottableZips.length > BOUNDARY_RENDER_LIMIT && (
+            <span className="text-[10px] text-[#A0AEC0] ml-auto">
+              Showing top {BOUNDARY_RENDER_LIMIT.toLocaleString()} of {plottableZips.length.toLocaleString()} ZIPs for stability.
+            </span>
+          )}
         </div>
       )}
     </div>
