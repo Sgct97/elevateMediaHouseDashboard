@@ -14,6 +14,8 @@ interface Props {
   entityLabelPlural?: string;
 }
 
+const NONE_SENTINEL = '__none__';
+
 export function PublisherMultiSelect({ options, selected, onChange, accentColor, disabled, entityLabel = 'option', entityLabelPlural }: Props) {
   const pluralLabel = entityLabelPlural || `${entityLabel}s`;
   const [open, setOpen] = useState(false);
@@ -35,35 +37,38 @@ export function PublisherMultiSelect({ options, selected, onChange, accentColor,
     return options.filter(o => o.toLowerCase().includes(q));
   }, [options, query]);
 
-  const allSelected = selected.size === 0 || selected.size === options.length;
-  const selectedCount = selected.size === 0 ? options.length : selected.size;
+  const noneSelected = selected.has(NONE_SENTINEL);
+  const allSelected = selected.size === 0 || (!noneSelected && selected.size === options.length);
+  const selectedCount = selected.size === 0 ? options.length : noneSelected ? 0 : selected.size;
 
   const toggle = (pub: string) => {
-    const next = new Set(selected.size === 0 ? options : selected);
+    const next = new Set(selected.size === 0 ? options : noneSelected ? [] : selected);
     if (next.has(pub)) next.delete(pub);
     else next.add(pub);
     if (next.size === options.length) onChange(new Set());
+    else if (next.size === 0) onChange(new Set([NONE_SENTINEL]));
     else onChange(next);
   };
 
   const selectAll = () => onChange(new Set());
-  const clearAll = () => onChange(new Set(['__none__']));
+  const clearAll = () => onChange(new Set([NONE_SENTINEL]));
 
-  const filteredAllChecked = filtered.length > 0 && filtered.every(p => (selected.size === 0 ? true : selected.has(p)));
+  const filteredAllChecked = filtered.length > 0 && filtered.every(p => (selected.size === 0 ? true : !noneSelected && selected.has(p)));
   const toggleFilteredAll = () => {
-    const current = new Set(selected.size === 0 ? options : selected);
+    const current = new Set(selected.size === 0 ? options : noneSelected ? [] : selected);
     if (filteredAllChecked) {
       filtered.forEach(p => current.delete(p));
     } else {
       filtered.forEach(p => current.add(p));
     }
     if (current.size === options.length) onChange(new Set());
+    else if (current.size === 0) onChange(new Set([NONE_SENTINEL]));
     else onChange(current);
   };
 
   const label = allSelected
     ? `All (${options.length})`
-    : selected.has('__none__')
+    : noneSelected
     ? 'None'
     : `${selected.size} selected`;
 
@@ -117,7 +122,7 @@ export function PublisherMultiSelect({ options, selected, onChange, accentColor,
               <div className="px-3 py-4 text-center text-xs text-[#A0AEC0]">No {pluralLabel} match</div>
             ) : (
               filtered.map(pub => {
-                const isChecked = selected.size === 0 ? true : selected.has(pub);
+                const isChecked = selected.size === 0 ? true : !noneSelected && selected.has(pub);
                 return (
                   <label
                     key={pub}
