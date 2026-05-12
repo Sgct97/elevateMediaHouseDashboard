@@ -232,7 +232,9 @@ async function aggregateCsv(csvPath: string): Promise<CampaignDelivery[]> {
 
     if (!campaign) continue;
 
-    const key = `${advertiserId}|||${campaign}`;
+    // Keep each flight separate so the CTV dashboard can isolate added-budget
+    // flights that share the same campaign name but have a new Flight Start Date.
+    const key = `${advertiserId}|||${campaign}|||${flightStart}`;
     let entry = campaignMap.get(key);
     if (!entry) {
       entry = {

@@ -9,6 +9,8 @@ interface Props {
   accentColor: string;
   loading: boolean;
   reachByCampaign?: Map<string, number>;
+  campaignWideCampaigns?: CampaignDelivery[];
+  flightFilterActive?: boolean;
 }
 
 type SortKey = 'publisher' | 'impressions' | 'completedViews' | 'completedViewsPct' | 'clicks';
@@ -16,7 +18,15 @@ type SortDir = 'asc' | 'desc';
 
 const NONE_SENTINEL = '__none__';
 
-export function PublisherNetworkDelivery({ campaigns, selectedCampaigns, accentColor, loading, reachByCampaign }: Props) {
+export function PublisherNetworkDelivery({
+  campaigns,
+  selectedCampaigns,
+  accentColor,
+  loading,
+  reachByCampaign,
+  campaignWideCampaigns,
+  flightFilterActive = false,
+}: Props) {
   const [limit, setLimit] = useState<'10' | '20' | '50' | '100' | 'all'>('50');
   const [sortKey, setSortKey] = useState<SortKey>('impressions');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -42,6 +52,13 @@ export function PublisherNetworkDelivery({ campaigns, selectedCampaigns, accentC
     if (selectedCampaigns.has(NONE_SENTINEL)) return [];
     return campaigns.filter(c => selectedCampaigns.has(c.campaign));
   }, [campaigns, selectedCampaigns]);
+
+  const campaignWideActiveCampaigns = useMemo<CampaignDelivery[]>(() => {
+    const source = campaignWideCampaigns || campaigns;
+    if (selectedCampaigns.size === 0) return source;
+    if (selectedCampaigns.has(NONE_SENTINEL)) return [];
+    return source.filter(c => selectedCampaigns.has(c.campaign));
+  }, [campaignWideCampaigns, campaigns, selectedCampaigns]);
 
   // Aggregate publishers across all active campaigns, summing metrics by publisher name.
   const aggregatedPublishers = useMemo<PublisherAggregate[]>(() => {
@@ -88,16 +105,22 @@ export function PublisherNetworkDelivery({ campaigns, selectedCampaigns, accentC
     const impressions = aggregatedPublishers.reduce((s, p) => s + p.impressions, 0);
     const completedViews = aggregatedPublishers.reduce((s, p) => s + p.completedViews, 0);
     const clicks = aggregatedPublishers.reduce((s, p) => s + p.clicks, 0);
-    const reach = activeCampaigns.reduce((s, c) => s + (reachByCampaign?.get(c.campaign) || 0), 0);
+    const reachCampaignNames = activeCampaigns.length > 0
+      ? new Set(campaignWideActiveCampaigns.map(c => c.campaign))
+      : new Set<string>();
+    const reach = Array.from(reachCampaignNames).reduce((s, campaign) => s + (reachByCampaign?.get(campaign) || 0), 0);
+    const frequencyImpressions = flightFilterActive
+      ? campaignWideActiveCampaigns.reduce((s, c) => s + c.totalImpressions, 0)
+      : impressions;
     return {
       impressions,
       completedViews,
       completedViewsPct: impressions > 0 ? (completedViews / impressions) * 100 : 0,
       clicks,
       reach,
-      frequency: reach > 0 ? impressions / reach : 0,
+      frequency: reach > 0 ? frequencyImpressions / reach : 0,
     };
-  }, [aggregatedPublishers, activeCampaigns, reachByCampaign]);
+  }, [aggregatedPublishers, activeCampaigns.length, campaignWideActiveCampaigns, reachByCampaign, flightFilterActive]);
 
   function toggleSort(k: SortKey) {
     if (sortKey === k) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -118,8 +141,8 @@ export function PublisherNetworkDelivery({ campaigns, selectedCampaigns, accentC
           { label: 'Completed View %', value: `${totals.completedViewsPct.toFixed(2)}%` },
         ]
       : []),
-    { label: 'Reach', value: totals.reach.toLocaleString() },
-    { label: 'Frequency', value: totals.frequency.toFixed(2) },
+    { label: flightFilterActive ? 'Reach (Campaign-Wide)' : 'Reach', value: totals.reach.toLocaleString() },
+    { label: flightFilterActive ? 'Frequency (Campaign-Wide)' : 'Frequency', value: totals.frequency.toFixed(2) },
     ...(showClicks ? [{ label: 'Clicks', value: totals.clicks.toLocaleString() }] : []),
   ];
 
@@ -153,6 +176,11 @@ export function PublisherNetworkDelivery({ campaigns, selectedCampaigns, accentC
           </h3>
           {headerSubtitle && (
             <p className="text-xs text-[#718096] mt-0.5">{headerSubtitle}</p>
+          )}
+          {flightFilterActive && (
+            <p className="text-[10px] text-[#A0AEC0] mt-1">
+              Flight Start filter is active. Delivery metrics are filtered; Reach and Frequency remain campaign-wide.
+            </p>
           )}
         </div>
         <div className="flex items-center gap-3 flex-wrap">

@@ -14,10 +14,28 @@ interface CTVDashboardProps {
   brand: BrandConfig;
 }
 
+function toDateOnly(value: string): number {
+  if (!value) return NaN;
+  const parsed = new Date(value);
+  if (isNaN(parsed.getTime())) return NaN;
+  return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate()).getTime();
+}
+
+function formatDateForInput(value: string): string {
+  if (!value) return '';
+  const parsed = new Date(value);
+  if (isNaN(parsed.getTime())) return '';
+  const y = parsed.getFullYear();
+  const m = String(parsed.getMonth() + 1).padStart(2, '0');
+  const d = String(parsed.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 export function CTVDashboard({ brand }: CTVDashboardProps) {
   const [deliveryData, setDeliveryData] = useState<CampaignDelivery[]>([]);
   const [deliveryEmailDate, setDeliveryEmailDate] = useState<string>('');
   const [selectedCampaigns, setSelectedCampaigns] = useState<Set<string>>(new Set());
+  const [flightDateRange, setFlightDateRange] = useState({ start: '', end: '' });
   const [deliveryLoading, setDeliveryLoading] = useState(true);
   const [adstirData, setAdstirData] = useState<AdStirRecord[]>([]);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -86,11 +104,28 @@ export function CTVDashboard({ brand }: CTVDashboardProps) {
 
   const campaignOptions = useMemo(
     () =>
-      deliveryData
-        .map(c => c.campaign)
+      Array.from(new Set(deliveryData.map(c => c.campaign)))
         .sort((a, b) => a.localeCompare(b)),
     [deliveryData]
   );
+
+  const flightFilterActive = Boolean(flightDateRange.start || flightDateRange.end);
+
+  const filteredDeliveryData = useMemo(() => {
+    if (!flightFilterActive) return deliveryData;
+    const start = flightDateRange.start ? toDateOnly(flightDateRange.start) : -Infinity;
+    const end = flightDateRange.end ? toDateOnly(flightDateRange.end) : Infinity;
+
+    return deliveryData.filter(c => {
+      const flightStart = toDateOnly(c.flightStart);
+      if (isNaN(flightStart)) return false;
+      return flightStart >= start && flightStart <= end;
+    });
+  }, [deliveryData, flightDateRange, flightFilterActive]);
+
+  const availableFlightStarts = useMemo(() => {
+    return Array.from(new Set(deliveryData.map(c => formatDateForInput(c.flightStart)).filter(Boolean))).sort();
+  }, [deliveryData]);
 
   return (
     <div className="min-h-screen bg-[#F7F8FA]">
@@ -147,30 +182,65 @@ export function CTVDashboard({ brand }: CTVDashboardProps) {
                   : 'Source: Daily Impression Network Report'}
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              <label className="text-xs text-[#A0AEC0] text-right">Campaigns:</label>
-              <PublisherMultiSelect
-                options={campaignOptions}
-                selected={selectedCampaigns}
-                onChange={setSelectedCampaigns}
-                accentColor={brand.primaryColor}
-                disabled={deliveryLoading || campaignOptions.length === 0}
-                entityLabel="campaign"
-              />
+            <div className="flex flex-col items-end gap-2">
+              <div className="flex items-center gap-2">
+                <label className="text-xs text-[#A0AEC0] text-right">Campaigns:</label>
+                <PublisherMultiSelect
+                  options={campaignOptions}
+                  selected={selectedCampaigns}
+                  onChange={setSelectedCampaigns}
+                  accentColor={brand.primaryColor}
+                  disabled={deliveryLoading || campaignOptions.length === 0}
+                  entityLabel="campaign"
+                />
+              </div>
+              <div className="flex items-center gap-2 flex-wrap justify-end">
+                <label className="text-xs text-[#A0AEC0] text-right">Flight Start:</label>
+                <input
+                  type="date"
+                  value={flightDateRange.start}
+                  onChange={e => setFlightDateRange(prev => ({ ...prev, start: e.target.value }))}
+                  className="px-2 py-1.5 text-xs border border-[#E2E8F0] focus:outline-none focus:border-[#CBD5E0]"
+                  disabled={deliveryLoading || availableFlightStarts.length === 0}
+                />
+                <span className="text-xs text-[#A0AEC0]">to</span>
+                <input
+                  type="date"
+                  value={flightDateRange.end}
+                  onChange={e => setFlightDateRange(prev => ({ ...prev, end: e.target.value }))}
+                  className="px-2 py-1.5 text-xs border border-[#E2E8F0] focus:outline-none focus:border-[#CBD5E0]"
+                  disabled={deliveryLoading || availableFlightStarts.length === 0}
+                />
+                {flightFilterActive && (
+                  <button
+                    onClick={() => setFlightDateRange({ start: '', end: '' })}
+                    className="text-xs text-[#718096] hover:text-[#2D3748] underline"
+                  >
+                    Clear dates
+                  </button>
+                )}
+              </div>
+              {flightFilterActive && (
+                <p className="text-[10px] text-[#A0AEC0] max-w-[520px] text-right">
+                  Flight date filters apply to impressions, publisher delivery, completed views, clicks, and ZIP delivery. Reach and frequency remain campaign-wide.
+                </p>
+              )}
             </div>
           </div>
         </div>
 
         <PublisherNetworkDelivery
-          campaigns={deliveryData}
+          campaigns={filteredDeliveryData}
           selectedCampaigns={selectedCampaigns}
           accentColor={brand.primaryColor}
           loading={deliveryLoading}
           reachByCampaign={reachByCampaign}
+          campaignWideCampaigns={deliveryData}
+          flightFilterActive={flightFilterActive}
         />
 
         <ZipHeatmap
-          campaigns={deliveryData}
+          campaigns={filteredDeliveryData}
           selectedCampaigns={selectedCampaigns}
           accentColor={brand.primaryColor}
           loading={deliveryLoading}
