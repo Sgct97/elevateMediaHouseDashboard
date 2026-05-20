@@ -11,6 +11,8 @@ interface HeaderProps {
 }
 
 export function Header({ brand, lastUpdated, onRefresh, isRefreshing = false }: HeaderProps) {
+  const isDarkHeader = Boolean(brand.headerBackgroundColor);
+
   const formatLastUpdated = (date: Date | null | undefined): string => {
     if (!date) return '—';
     
@@ -28,7 +30,10 @@ export function Header({ brand, lastUpdated, onRefresh, isRefreshing = false }: 
   };
 
   return (
-    <header className="bg-white border-b border-[#E2E8F0] px-6 py-4">
+    <header
+      className="border-b border-[#E2E8F0] px-6 py-4"
+      style={{ backgroundColor: brand.headerBackgroundColor || '#FFFFFF' }}
+    >
       <div className="flex items-center justify-between">
         <Image
           src={brand.logo}
@@ -40,7 +45,7 @@ export function Header({ brand, lastUpdated, onRefresh, isRefreshing = false }: 
         />
 
         <div className="flex items-center gap-6">
-          <span className="text-xs text-[#718096]">
+          <span className={`text-xs ${isDarkHeader ? 'text-white/70' : 'text-[#718096]'}`}>
             Updated {formatLastUpdated(lastUpdated)}
           </span>
           {onRefresh && (

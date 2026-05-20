@@ -19,6 +19,11 @@ import type { GroundTruthCampaign } from '@/app/api/groundtruth/route';
 
 interface DashboardProps {
   brand: BrandConfig;
+  clientFilter?: 'ddus';
+  hideInvoiceFilter?: boolean;
+  hideLinkClicks?: boolean;
+  retargetingTitle?: string;
+  hideRetargetingCpcv?: boolean;
 }
 
 interface DashboardData {
@@ -33,7 +38,24 @@ function toDateOnly(str: string): number {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 }
 
-export function Dashboard({ brand }: DashboardProps) {
+function apiPath(path: string, options: { refresh?: boolean; clientFilter?: 'ddus'; dateRange?: { start: string; end: string } } = {}) {
+  const params = new URLSearchParams();
+  if (options.refresh) params.set('refresh', 'true');
+  if (options.clientFilter) params.set('client', options.clientFilter);
+  if (options.dateRange?.start) params.set('start', options.dateRange.start);
+  if (options.dateRange?.end) params.set('end', options.dateRange.end);
+  const query = params.toString();
+  return query ? `${path}?${query}` : path;
+}
+
+export function Dashboard({
+  brand,
+  clientFilter,
+  hideInvoiceFilter = false,
+  hideLinkClicks = false,
+  retargetingTitle = 'AdStir Retargeting Performance',
+  hideRetargetingCpcv = false,
+}: DashboardProps) {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -142,7 +164,7 @@ export function Dashboard({ brand }: DashboardProps) {
       setIsRefreshing(true);
       setError(null);
       
-      const url = refresh ? '/api/campaigns?refresh=true' : '/api/campaigns';
+      const url = apiPath('/api/campaigns', { refresh, clientFilter });
       const response = await fetch(url);
       
       if (!response.ok) {
@@ -159,12 +181,12 @@ export function Dashboard({ brand }: DashboardProps) {
       setLoading(false);
       setIsRefreshing(false);
     }
-  }, []);
+  }, [clientFilter]);
 
   const fetchAdstirData = useCallback(async (refresh = false) => {
     try {
       setAdstirLoading(true);
-      const url = refresh ? '/api/adstir?refresh=true' : '/api/adstir';
+      const url = apiPath('/api/adstir', { refresh, clientFilter });
       const response = await fetch(url);
       if (response.ok) {
         const result = await response.json();
@@ -175,12 +197,12 @@ export function Dashboard({ brand }: DashboardProps) {
     } finally {
       setAdstirLoading(false);
     }
-  }, []);
+  }, [clientFilter]);
 
   const fetchDs360Data = useCallback(async (refresh = false) => {
     try {
       setDs360Loading(true);
-      const url = refresh ? '/api/datasys360?refresh=true' : '/api/datasys360';
+      const url = apiPath('/api/datasys360', { refresh, clientFilter });
       const response = await fetch(url);
       if (response.ok) {
         const result = await response.json();
@@ -191,12 +213,12 @@ export function Dashboard({ brand }: DashboardProps) {
     } finally {
       setDs360Loading(false);
     }
-  }, []);
+  }, [clientFilter]);
 
   const fetchGtData = useCallback(async (refresh = false) => {
     try {
       setGtLoading(true);
-      const url = refresh ? '/api/groundtruth?refresh=true' : '/api/groundtruth';
+      const url = apiPath('/api/groundtruth', { refresh, clientFilter, dateRange });
       const response = await fetch(url);
       if (response.ok) {
         const result = await response.json();
@@ -207,7 +229,7 @@ export function Dashboard({ brand }: DashboardProps) {
     } finally {
       setGtLoading(false);
     }
-  }, []);
+  }, [clientFilter, dateRange]);
 
 
   useEffect(() => {
@@ -238,7 +260,7 @@ export function Dashboard({ brand }: DashboardProps) {
       if (selectedDealerships.size > 0 && !selectedDealerships.has(campaign['Campaign Title'])) {
         return false;
       }
-      if (selectedInvoices.size > 0 && !selectedInvoices.has(campaign['Invoice #'])) {
+      if (!hideInvoiceFilter && selectedInvoices.size > 0 && !selectedInvoices.has(campaign['Invoice #'])) {
         return false;
       }
       if (dateRange.start || dateRange.end) {
@@ -259,7 +281,7 @@ export function Dashboard({ brand }: DashboardProps) {
       }
       return true;
     });
-  }, [data?.campaigns, searchQuery, selectedDealerships, selectedInvoices, dateRange]);
+  }, [data?.campaigns, searchQuery, selectedDealerships, selectedInvoices, dateRange, hideInvoiceFilter]);
 
   // Remove hidden campaigns from the visible set
   const visibleCampaigns = useMemo(() => {
@@ -415,6 +437,7 @@ export function Dashboard({ brand }: DashboardProps) {
             selectedInvoices={selectedInvoices}
             onInvoicesChange={setSelectedInvoices}
             accentColor={brand.primaryColor}
+            showInvoiceFilter={!hideInvoiceFilter}
           />
         </div>
 
@@ -581,20 +604,22 @@ export function Dashboard({ brand }: DashboardProps) {
             ]}
           />
 
-          <LinkClicksPivot
-            campaigns={visibleCampaigns as unknown as Array<{
-              'Campaign ID': number | string;
-              'Invoice #': string;
-              'Campaign Title': string;
-              'Launch Date': string | null;
-              'Create Date': string | null;
-              'URL Breakdown'?: Array<{ URLID: number; Type?: string; Clicks: number; 'Unique Clicks': number; URL: string }>;
-              [key: string]: unknown;
-            }>}
-            loading={loading}
-            accentColor={brand.primaryColor}
-            onHideDrop={hideCampaign}
-          />
+          {!hideLinkClicks && (
+            <LinkClicksPivot
+              campaigns={visibleCampaigns as unknown as Array<{
+                'Campaign ID': number | string;
+                'Invoice #': string;
+                'Campaign Title': string;
+                'Launch Date': string | null;
+                'Create Date': string | null;
+                'URL Breakdown'?: Array<{ URLID: number; Type?: string; Clicks: number; 'Unique Clicks': number; URL: string }>;
+                [key: string]: unknown;
+              }>}
+              loading={loading}
+              accentColor={brand.primaryColor}
+              onHideDrop={hideCampaign}
+            />
+          )}
 
           <AdStirSection
             data={adstirData}
@@ -602,6 +627,8 @@ export function Dashboard({ brand }: DashboardProps) {
             accentColor={brand.primaryColor}
             dateRange={dateRange}
             searchQuery={searchQuery}
+            title={retargetingTitle}
+            showCpcvCalculator={!hideRetargetingCpcv}
           />
 
           <Datasys360Section
@@ -609,6 +636,7 @@ export function Dashboard({ brand }: DashboardProps) {
             loading={ds360Loading}
             accentColor={brand.primaryColor}
             searchQuery={searchQuery}
+            dateRange={dateRange}
           />
 
           <GroundTruthSection

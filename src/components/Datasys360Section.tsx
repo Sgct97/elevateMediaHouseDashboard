@@ -8,9 +8,19 @@ interface Datasys360SectionProps {
   loading: boolean;
   accentColor: string;
   searchQuery?: string;
+  dateRange?: { start: string; end: string };
 }
 
-export function Datasys360Section({ data, loading, accentColor, searchQuery }: Datasys360SectionProps) {
+function dateValue(value?: string): number | null {
+  if (!value) return null;
+  const datePart = value.slice(0, 10);
+  const [y, m, d] = datePart.split('-').map(Number);
+  if (y && m && d) return new Date(y, m - 1, d).getTime();
+  const parsed = new Date(value);
+  return isNaN(parsed.getTime()) ? null : new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate()).getTime();
+}
+
+export function Datasys360Section({ data, loading, searchQuery, dateRange }: Datasys360SectionProps) {
   const [sortKey, setSortKey] = useState<string>('totalImpressions');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [selectedAdvertiser, setSelectedAdvertiser] = useState('');
@@ -34,8 +44,20 @@ export function Datasys360Section({ data, loading, accentColor, searchQuery }: D
     if (selectedAdvertiser) {
       result = result.filter(r => r.advertiserName === selectedAdvertiser);
     }
+    if (dateRange?.start || dateRange?.end) {
+      const start = dateValue(dateRange.start);
+      const end = dateValue(dateRange.end);
+      result = result.filter(r => {
+        const campaignStart = dateValue(r.startDate);
+        const campaignEnd = dateValue(r.endDate) ?? campaignStart;
+        if (!campaignStart && !campaignEnd) return false;
+        if (start !== null && campaignEnd !== null && campaignEnd < start) return false;
+        if (end !== null && campaignStart !== null && campaignStart > end) return false;
+        return true;
+      });
+    }
     return result;
-  }, [data, searchQuery, selectedAdvertiser]);
+  }, [data, searchQuery, selectedAdvertiser, dateRange]);
 
   const sorted = useMemo(() => {
     const arr = [...filtered];

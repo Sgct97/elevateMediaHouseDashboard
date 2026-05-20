@@ -12,6 +12,7 @@ interface FiltersProps {
   selectedInvoices: Set<string>;
   onInvoicesChange: (invoices: Set<string>) => void;
   accentColor?: string;
+  showInvoiceFilter?: boolean;
 }
 
 function MultiSelectDropdown({
@@ -111,6 +112,7 @@ export function Filters({
   selectedInvoices,
   onInvoicesChange,
   accentColor = '#4BA5A5',
+  showInvoiceFilter = true,
 }: FiltersProps) {
   const inputStyle = {
     borderColor: accentColor,
@@ -159,13 +161,15 @@ export function Filters({
       />
 
       {/* Invoice Filter - Multi-select */}
-      <MultiSelectDropdown
-        label="Invoice #"
-        options={invoices}
-        selected={selectedInvoices}
-        onChange={onInvoicesChange}
-        accentColor={accentColor}
-      />
+      {showInvoiceFilter && (
+        <MultiSelectDropdown
+          label="Invoice #"
+          options={invoices}
+          selected={selectedInvoices}
+          onChange={onInvoicesChange}
+          accentColor={accentColor}
+        />
+      )}
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { S3Client, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3';
+import { type ClientFilter, getClientFilterFromUrl, matchesClientFilter } from '@/lib/clientFilters';
 
 const BUCKET_NAME = 'elevate-adstir-data-v2';
 const REGION = 'us-east-2';
@@ -33,6 +34,14 @@ let fetchInProgress = false;
 let cronStarted = false;
 const CACHE_TTL = 60 * 60 * 1000; // 1 hour
 const REFRESH_INTERVAL = 6 * 60 * 60 * 1000; // 6 hours
+
+function filterRecords(records: AdStirRecord[], filter: ClientFilter | null): AdStirRecord[] {
+  return records.filter(record => matchesClientFilter(filter, [
+    record.advertiser,
+    record.campaign,
+    record.campaignId,
+  ]));
+}
 
 function parseCSV(csv: string): AdStirRecord[] {
   const lines = csv.trim().split('\n');
@@ -121,6 +130,8 @@ function startCron() {
 startCron();
 
 export async function GET(request: Request) {
+  const requestUrl = new URL(request.url);
+  const clientFilter = getClientFilterFromUrl(requestUrl);
   try {
     if (!process.env.AWS_S3_ACCESS_KEY_ID || !process.env.AWS_S3_SECRET_ACCESS_KEY) {
       return NextResponse.json(
@@ -129,17 +140,16 @@ export async function GET(request: Request) {
       );
     }
 
-    const url = new URL(request.url);
-    const forceRefresh = url.searchParams.get('refresh') === 'true';
+    const forceRefresh = requestUrl.searchParams.get('refresh') === 'true';
 
     const now = Date.now();
     if (!forceRefresh && adstirCache.length > 0 && (now - cacheTimestamp) < CACHE_TTL) {
-      return NextResponse.json({ data: adstirCache, fromCache: true, fetchedAt: new Date(cacheTimestamp).toISOString() });
+      return NextResponse.json({ data: filterRecords(adstirCache, clientFilter), fromCache: true, fetchedAt: new Date(cacheTimestamp).toISOString() });
     }
 
     if (fetchInProgress) {
       if (adstirCache.length > 0) {
-        return NextResponse.json({ data: adstirCache, fromCache: true, refreshing: true });
+        return NextResponse.json({ data: filterRecords(adstirCache, clientFilter), fromCache: true, refreshing: true });
       }
       return NextResponse.json({ data: [], refreshing: true }, { status: 202 });
     }
@@ -149,13 +159,13 @@ export async function GET(request: Request) {
       const records = await fetchAllCSVFiles();
       adstirCache = records;
       cacheTimestamp = Date.now();
-      return NextResponse.json({ data: records, fetchedAt: new Date().toISOString() });
+      return NextResponse.json({ data: filterRecords(records, clientFilter), fetchedAt: new Date().toISOString() });
     } finally {
       fetchInProgress = false;
     }
   } catch (error) {
     if (adstirCache.length > 0) {
-      return NextResponse.json({ data: adstirCache, fromCache: true, stale: true });
+      return NextResponse.json({ data: filterRecords(adstirCache, clientFilter), fromCache: true, stale: true });
     }
     console.error('Error fetching AdStir data:', error);
     return NextResponse.json(

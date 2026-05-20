@@ -9,9 +9,19 @@ interface AdStirSectionProps {
   accentColor: string;
   dateRange?: { start: string; end: string };
   searchQuery?: string;
+  title?: string;
+  showCpcvCalculator?: boolean;
 }
 
-export function AdStirSection({ data, loading, accentColor, dateRange, searchQuery }: AdStirSectionProps) {
+export function AdStirSection({
+  data,
+  loading,
+  accentColor,
+  dateRange,
+  searchQuery,
+  title = 'AdStir Retargeting Performance',
+  showCpcvCalculator = true,
+}: AdStirSectionProps) {
   const [selectedAdvertiser, setSelectedAdvertiser] = useState('');
   const [showClicks, setShowClicks] = useState(true);
   const [showVCR, setShowVCR] = useState(true);
@@ -115,9 +125,9 @@ export function AdStirSection({ data, loading, accentColor, dateRange, searchQue
 
   const cpcv = useMemo(() => {
     const cost = parseFloat(costInput);
-    if (isNaN(cost) || cost <= 0 || totals.completedViews === 0) return null;
+    if (!showCpcvCalculator || isNaN(cost) || cost <= 0 || totals.completedViews === 0) return null;
     return (cost / totals.completedViews).toFixed(4);
-  }, [costInput, totals.completedViews]);
+  }, [costInput, totals.completedViews, showCpcvCalculator]);
 
   const sorted = useMemo(() => {
     const arr = [...aggregated];
@@ -157,7 +167,7 @@ export function AdStirSection({ data, loading, accentColor, dateRange, searchQue
       <div className="bg-white border border-[#E2E8F0]">
         <div className="px-4 py-3 border-b border-[#E2E8F0]">
           <h2 className="text-sm font-semibold text-[#2D3748] uppercase tracking-wide">
-            AdStir Retargeting Performance
+            {title}
           </h2>
         </div>
         <div className="p-8 text-center text-[#718096] text-sm">Loading retargeting data...</div>
@@ -170,7 +180,7 @@ export function AdStirSection({ data, loading, accentColor, dateRange, searchQue
       <div className="bg-white border border-[#E2E8F0]">
         <div className="px-4 py-3 border-b border-[#E2E8F0]">
           <h2 className="text-sm font-semibold text-[#2D3748] uppercase tracking-wide">
-            AdStir Retargeting Performance
+            {title}
           </h2>
         </div>
         <div className="p-8 text-center text-[#718096] text-sm">No retargeting data available.</div>
@@ -180,30 +190,32 @@ export function AdStirSection({ data, loading, accentColor, dateRange, searchQue
 
   return (
     <div className="bg-white border border-[#E2E8F0]">
-      {/* Header with CPCV Calculator and Advertiser Picker */}
+      {/* Header with optional CPCV Calculator and Advertiser Picker */}
       <div className="px-4 py-3 border-b border-[#E2E8F0] flex items-center justify-between flex-wrap gap-3">
         <h2 className="text-sm font-semibold text-[#2D3748] uppercase tracking-wide">
-          AdStir Retargeting Performance
+          {title}
         </h2>
         <div className="flex items-center gap-4 flex-wrap">
           {/* CPCV Calculator */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-[#4A5568] uppercase tracking-wide">CPCV</span>
-            <span className="text-xs text-[#718096]">$</span>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={costInput}
-              onChange={(e) => setCostInput(e.target.value)}
-              placeholder="Cost"
-              className="text-xs border border-[#E2E8F0] px-2 py-1.5 w-24 text-[#2D3748] bg-white"
-            />
-            <span className="text-xs text-[#718096]">÷ {totals.completedViews.toLocaleString()} views =</span>
-            <span className="text-sm font-semibold" style={{ color: cpcv ? accentColor : '#A0AEC0' }}>
-              {cpcv ? `$${cpcv}` : '—'}
-            </span>
-          </div>
+          {showCpcvCalculator && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-[#4A5568] uppercase tracking-wide">CPCV</span>
+              <span className="text-xs text-[#718096]">$</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={costInput}
+                onChange={(e) => setCostInput(e.target.value)}
+                placeholder="Cost"
+                className="text-xs border border-[#E2E8F0] px-2 py-1.5 w-24 text-[#2D3748] bg-white"
+              />
+              <span className="text-xs text-[#718096]">÷ {totals.completedViews.toLocaleString()} views =</span>
+              <span className="text-sm font-semibold" style={{ color: cpcv ? accentColor : '#A0AEC0' }}>
+                {cpcv ? `$${cpcv}` : '—'}
+              </span>
+            </div>
+          )}
           {/* Advertiser filter */}
           <select
             value={selectedAdvertiser}

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { type ClientFilter, getClientFilterFromUrl, matchesClientFilter } from '@/lib/clientFilters';
 
 const REPORTING_BASE = 'https://reporting.groundtruth.com';
 
@@ -18,6 +19,13 @@ let cronStarted = false;
 const CACHE_TTL = 60 * 60 * 1000;
 const REFRESH_INTERVAL = 4 * 60 * 60 * 1000;
 
+function filterCampaigns(data: GroundTruthCampaign[], filter: ClientFilter | null): GroundTruthCampaign[] {
+  return data.filter(campaign => matchesClientFilter(filter, [
+    campaign.campaignName,
+    campaign.campaignId,
+  ]));
+}
+
 function getConfig() {
   return {
     userId: process.env.GROUNDTRUTH_USER_ID || '',
@@ -28,6 +36,14 @@ function getConfig() {
 
 function formatDate(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function parseDateParam(value: string | null): Date | null {
+  if (!value) return null;
+  const [y, m, d] = value.split('-').map(Number);
+  if (!y || !m || !d) return null;
+  const date = new Date(y, m - 1, d);
+  return isNaN(date.getTime()) ? null : date;
 }
 
 async function fetchWeek(accountId: string, startDate: string, endDate: string, userId: string, apiKey: string): Promise<unknown[]> {
@@ -52,19 +68,20 @@ async function fetchWeek(accountId: string, startDate: string, endDate: string, 
   }
 }
 
-async function fetchAllData(): Promise<GroundTruthCampaign[]> {
+async function fetchAllData(startOverride?: Date | null, endOverride?: Date | null): Promise<GroundTruthCampaign[]> {
   const { userId, apiKey, accountId } = getConfig();
 
   const now = new Date();
-  const windowStart = new Date(now);
-  windowStart.setDate(windowStart.getDate() - 90);
+  const windowStart = startOverride || new Date(now);
+  if (!startOverride) windowStart.setDate(windowStart.getDate() - 90);
+  const windowEnd = endOverride && endOverride < now ? endOverride : now;
 
   const weeks: { start: string; end: string }[] = [];
   const cursor = new Date(windowStart);
-  while (cursor < now) {
+  while (cursor <= windowEnd) {
     const weekEnd = new Date(cursor);
     weekEnd.setDate(weekEnd.getDate() + 6);
-    if (weekEnd > now) weekEnd.setTime(now.getTime());
+    if (weekEnd > windowEnd) weekEnd.setTime(windowEnd.getTime());
     weeks.push({ start: formatDate(cursor), end: formatDate(weekEnd) });
     cursor.setDate(cursor.getDate() + 7);
   }
@@ -130,6 +147,8 @@ function startCron() {
 startCron();
 
 export async function GET(request: Request) {
+  const requestUrl = new URL(request.url);
+  const clientFilter = getClientFilterFromUrl(requestUrl);
   try {
     const { userId, apiKey, accountId } = getConfig();
     if (!userId || !apiKey || !accountId) {
@@ -139,19 +158,26 @@ export async function GET(request: Request) {
       );
     }
 
-    const url = new URL(request.url);
-    const forceRefresh = url.searchParams.get('refresh') === 'true';
+    const forceRefresh = requestUrl.searchParams.get('refresh') === 'true';
+    const startDate = parseDateParam(requestUrl.searchParams.get('start'));
+    const endDate = parseDateParam(requestUrl.searchParams.get('end'));
+    const hasCustomDateRange = Boolean(startDate || endDate);
 
     const now = Date.now();
-    if (!forceRefresh && dataCache.length > 0 && (now - cacheTimestamp) < CACHE_TTL) {
-      return NextResponse.json({ data: dataCache, fromCache: true, fetchedAt: new Date(cacheTimestamp).toISOString() });
+    if (!hasCustomDateRange && !forceRefresh && dataCache.length > 0 && (now - cacheTimestamp) < CACHE_TTL) {
+      return NextResponse.json({ data: filterCampaigns(dataCache, clientFilter), fromCache: true, fetchedAt: new Date(cacheTimestamp).toISOString() });
     }
 
-    if (fetchInProgress) {
+    if (!hasCustomDateRange && fetchInProgress) {
       if (dataCache.length > 0) {
-        return NextResponse.json({ data: dataCache, fromCache: true, refreshing: true });
+        return NextResponse.json({ data: filterCampaigns(dataCache, clientFilter), fromCache: true, refreshing: true });
       }
       return NextResponse.json({ data: [], refreshing: true }, { status: 202 });
+    }
+
+    if (hasCustomDateRange) {
+      const records = await fetchAllData(startDate, endDate);
+      return NextResponse.json({ data: filterCampaigns(records, clientFilter), fetchedAt: new Date().toISOString() });
     }
 
     fetchInProgress = true;
@@ -159,13 +185,13 @@ export async function GET(request: Request) {
       const records = await fetchAllData();
       dataCache = records;
       cacheTimestamp = Date.now();
-      return NextResponse.json({ data: records, fetchedAt: new Date().toISOString() });
+      return NextResponse.json({ data: filterCampaigns(records, clientFilter), fetchedAt: new Date().toISOString() });
     } finally {
       fetchInProgress = false;
     }
   } catch (error) {
     if (dataCache.length > 0) {
-      return NextResponse.json({ data: dataCache, fromCache: true, stale: true });
+      return NextResponse.json({ data: filterCampaigns(dataCache, clientFilter), fromCache: true, stale: true });
     }
     console.error('Error fetching GroundTruth data:', error);
     return NextResponse.json(

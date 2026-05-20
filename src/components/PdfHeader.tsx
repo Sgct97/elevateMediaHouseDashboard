@@ -18,8 +18,13 @@ export function PdfHeader({ brand, title, subtitle }: Props) {
         className="flex items-center justify-between pb-4 border-b-2"
         style={{ borderColor: brand.primaryColor }}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={brand.logo} alt={brand.name} className="h-14 object-contain" />
+        <div
+          className="px-4 py-2"
+          style={{ backgroundColor: brand.headerBackgroundColor || 'transparent' }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={brand.logo} alt={brand.name} className="h-14 object-contain" />
+        </div>
         <div className="text-right">
           <h2 className="text-xl font-light text-[#2D3748]">{title}</h2>
           {subtitle && (

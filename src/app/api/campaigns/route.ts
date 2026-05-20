@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { type ClientFilter, getClientFilterFromUrl, matchesClientFilter } from '@/lib/clientFilters';
 
 const API_BASE_URL = 'http://www.worthautotrack.com/api/v1';
 
@@ -131,18 +132,34 @@ function startCron() {
 
 startCron();
 
-function buildResponse(extras: Record<string, unknown> = {}) {
+function buildResponse(filter: ClientFilter | null = null, extras: Record<string, unknown> = {}) {
+  const campaigns = Array.from(campaignCache.values()).filter(campaign => {
+    const row = campaign as Record<string, unknown>;
+    return matchesClientFilter(filter, [
+      row['Campaign Title'],
+      row['Campaign Name'],
+      row['Campaign'],
+    ]);
+  });
+  const campaignIds = new Set(
+    campaigns
+      .map(campaign => String((campaign as Record<string, unknown>)['Campaign ID'] || ''))
+      .filter(Boolean)
+  );
+
   return {
-    campaigns: Array.from(campaignCache.values()),
-    urlBreakdowns: Array.from(urlBreakdownCache.values()),
-    totalCampaigns: campaignCache.size,
-    fetchedCampaigns: campaignCache.size,
+    campaigns,
+    urlBreakdowns: Array.from(urlBreakdownCache.values()).filter(item => campaignIds.has(String(item.campaignId))),
+    totalCampaigns: campaigns.length,
+    fetchedCampaigns: campaigns.length,
     fetchedAt: new Date().toISOString(),
     ...extras,
   };
 }
 
 export async function GET(request: Request) {
+  const requestUrl = new URL(request.url);
+  const clientFilter = getClientFilterFromUrl(requestUrl);
   try {
     const authHeader = getAuthHeader();
 
@@ -158,18 +175,17 @@ export async function GET(request: Request) {
       );
     }
 
-    const url = new URL(request.url);
-    const forceRefresh = url.searchParams.get('refresh') === 'true';
+    const forceRefresh = requestUrl.searchParams.get('refresh') === 'true';
 
     // If cache exists and not a forced refresh, return it immediately
     if (!forceRefresh && cacheReady && campaignCache.size > 0) {
-      return NextResponse.json(buildResponse({ fromCache: true }));
+      return NextResponse.json(buildResponse(clientFilter, { fromCache: true }));
     }
 
     // If another fetch is already running, return cached data (or loading state)
     if (fetchInProgress) {
       if (campaignCache.size > 0) {
-        return NextResponse.json(buildResponse({ fromCache: true, refreshing: true }));
+        return NextResponse.json(buildResponse(clientFilter, { fromCache: true, refreshing: true }));
       }
       return NextResponse.json(
         { error: 'Initial data load in progress. Please wait and refresh.', campaigns: [], urlBreakdowns: [] },
@@ -181,7 +197,7 @@ export async function GET(request: Request) {
 
     try {
       await runFetch(authHeader, forceRefresh);
-      return NextResponse.json(buildResponse());
+      return NextResponse.json(buildResponse(clientFilter));
     } finally {
       fetchInProgress = false;
     }
@@ -189,7 +205,7 @@ export async function GET(request: Request) {
   } catch (error) {
     // If fetch fails but we have cached data, return it (stale is better than nothing)
     if (campaignCache.size > 0) {
-      return NextResponse.json(buildResponse({ fromCache: true, stale: true }));
+      return NextResponse.json(buildResponse(clientFilter, { fromCache: true, stale: true }));
     }
 
     console.error('Error fetching campaigns:', error);

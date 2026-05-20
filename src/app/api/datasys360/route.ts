@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { type ClientFilter, getClientFilterFromUrl, matchesClientFilter } from '@/lib/clientFilters';
 
 const BASE_URL = 'https://www.datasys360.com/api/v3';
 
@@ -54,6 +55,14 @@ let fetchInProgress = false;
 let cronStarted = false;
 const CACHE_TTL = 60 * 60 * 1000;
 const REFRESH_INTERVAL = 60 * 60 * 1000;
+
+function filterCampaigns(data: Datasys360Campaign[], filter: ClientFilter | null): Datasys360Campaign[] {
+  return data.filter(campaign => matchesClientFilter(filter, [
+    campaign.advertiserName,
+    campaign.campaignName,
+    campaign.socialCampaignId,
+  ]));
+}
 
 function getApiKey(): string {
   return process.env.DATASYS360_API_KEY || '';
@@ -187,6 +196,8 @@ function startCron() {
 startCron();
 
 export async function GET(request: Request) {
+  const requestUrl = new URL(request.url);
+  const clientFilter = getClientFilterFromUrl(requestUrl);
   try {
     if (!getApiKey()) {
       return NextResponse.json(
@@ -195,17 +206,16 @@ export async function GET(request: Request) {
       );
     }
 
-    const url = new URL(request.url);
-    const forceRefresh = url.searchParams.get('refresh') === 'true';
+    const forceRefresh = requestUrl.searchParams.get('refresh') === 'true';
     const now = Date.now();
 
     if (!forceRefresh && dataCache.length > 0 && now - cacheTimestamp < CACHE_TTL) {
-      return NextResponse.json({ data: dataCache, fromCache: true });
+      return NextResponse.json({ data: filterCampaigns(dataCache, clientFilter), fromCache: true });
     }
 
     if (fetchInProgress) {
       if (dataCache.length > 0) {
-        return NextResponse.json({ data: dataCache, fromCache: true, refreshing: true });
+        return NextResponse.json({ data: filterCampaigns(dataCache, clientFilter), fromCache: true, refreshing: true });
       }
       return NextResponse.json({ data: [], refreshing: true }, { status: 202 });
     }
@@ -215,13 +225,13 @@ export async function GET(request: Request) {
       const data = await buildAllCampaigns();
       dataCache = data;
       cacheTimestamp = Date.now();
-      return NextResponse.json({ data });
+      return NextResponse.json({ data: filterCampaigns(data, clientFilter) });
     } finally {
       fetchInProgress = false;
     }
   } catch (err) {
     if (dataCache.length > 0) {
-      return NextResponse.json({ data: dataCache, fromCache: true, stale: true });
+      return NextResponse.json({ data: filterCampaigns(dataCache, clientFilter), fromCache: true, stale: true });
     }
     console.error('[Datasys360] Error:', err);
     return NextResponse.json(

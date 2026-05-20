@@ -8,6 +8,7 @@ export interface BrandConfig {
   primaryColor: string;
   secondaryColor: string;
   textColor: string;
+  headerBackgroundColor?: string;
 }
 
 export const brands: Record<string, BrandConfig> = {
@@ -18,6 +19,15 @@ export const brands: Record<string, BrandConfig> = {
     primaryColor: '#4BA5A5', // Teal
     secondaryColor: '#5A5A5A', // Gray
     textColor: '#333333',
+  },
+  'dealers-direct-us': {
+    id: 'dealers-direct-us',
+    name: 'Dealers Direct U.S.',
+    logo: '/ddus-logo.png',
+    primaryColor: '#C91F2C',
+    secondaryColor: '#1D3F8F',
+    textColor: '#1A202C',
+    headerBackgroundColor: '#101827',
   },
   // Add more brands here as needed:
   // 'another-brand': {
