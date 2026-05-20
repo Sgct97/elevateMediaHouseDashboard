@@ -55,13 +55,36 @@ let fetchInProgress = false;
 let cronStarted = false;
 const CACHE_TTL = 60 * 60 * 1000;
 const REFRESH_INTERVAL = 60 * 60 * 1000;
+const DDUS_EXCLUDED_SOCIAL_IDS = new Set([169, 259]);
+
+function hasNonZeroMetrics(campaign: Datasys360Campaign): boolean {
+  return (
+    campaign.totalImpressions > 0 ||
+    campaign.totalReach > 0 ||
+    campaign.linkClicks > 0 ||
+    campaign.frequency > 0 ||
+    campaign.ctr > 0 ||
+    campaign.uniqueCtr > 0
+  );
+}
 
 function filterCampaigns(data: Datasys360Campaign[], filter: ClientFilter | null): Datasys360Campaign[] {
-  return data.filter(campaign => matchesClientFilter(filter, [
-    campaign.advertiserName,
-    campaign.campaignName,
-    campaign.socialCampaignId,
-  ]));
+  return data.filter(campaign => {
+    if (!matchesClientFilter(filter, [
+      campaign.advertiserName,
+      campaign.campaignName,
+      campaign.socialCampaignId,
+    ])) {
+      return false;
+    }
+
+    if (filter === 'ddus') {
+      if (DDUS_EXCLUDED_SOCIAL_IDS.has(campaign.socialCampaignId)) return false;
+      if (!hasNonZeroMetrics(campaign)) return false;
+    }
+
+    return true;
+  });
 }
 
 function getApiKey(): string {
